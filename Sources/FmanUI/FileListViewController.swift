@@ -46,7 +46,8 @@ final class FileListViewController: NSViewController, FileBrowser, NSTableViewDa
         tableView.delegate = self
         tableView.target = self
         tableView.doubleAction = #selector(doubleClicked(_:))
-        tableView.allowsTypeSelect = true
+        // Typing filters the list (the pane handles it) instead of jumping to a name.
+        tableView.allowsTypeSelect = false
 
         for col in Column.allCases {
             let c = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(col.rawValue))
@@ -119,6 +120,8 @@ final class FileListViewController: NSViewController, FileBrowser, NSTableViewDa
 
     func display(_ directory: URL, selecting: URL?) {
         currentDirectory = directory
+        // A filter belongs to the folder it was typed in.
+        options.filter = ""
         _ = view
         load(selecting: selecting)
         tableView.scrollRowToVisible(max(0, tableView.selectedRow))
@@ -286,10 +289,6 @@ final class FileListViewController: NSViewController, FileBrowser, NSTableViewDa
         options.sort = sort
         reload(options: options)
         onSortChange?(sort)
-    }
-
-    func tableView(_ tableView: NSTableView, typeSelectStringFor tableColumn: NSTableColumn?, row: Int) -> String? {
-        tableColumn?.identifier.rawValue == Column.name.rawValue ? visibleItems[row].name : nil
     }
 
     // MARK: Drag & drop

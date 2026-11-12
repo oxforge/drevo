@@ -6,6 +6,8 @@ import FmanCore
 final class ColumnBrowserViewController: NSViewController, FileBrowser {
     weak var delegate: FileBrowserDelegate?
     private let preferences: Preferences
+    /// The pane's options; their filter applies to the focused column only
+    /// (`options(forColumn:)`).
     private var options: ListingOptions
     private var rowSize: RowSize
 
@@ -94,6 +96,8 @@ final class ColumnBrowserViewController: NSViewController, FileBrowser {
 
     func display(_ directory: URL, selecting: URL?) {
         _ = view
+        // A filter belongs to the folder it was typed in.
+        options.filter = ""
         let chain = PathBarView.segments(for: directory)
         rebuild(chain: chain, focusLast: true, selecting: selecting)
     }
@@ -141,7 +145,7 @@ final class ColumnBrowserViewController: NSViewController, FileBrowser {
             if folderChanged || nextIsGone {
                 // Only the last column may move its cursor to a neighbour: in the others
                 // the next column still shows what was selected.
-                col.reload(options: options, keepingCursor: isLast && sameFilter)
+                col.reload(options: options(forColumn: i), keepingCursor: isLast && sameFilter)
                 reloadedLast = isLast
             }
             if nextIsGone { break }
@@ -150,6 +154,14 @@ final class ColumnBrowserViewController: NSViewController, FileBrowser {
         focusedIndex = min(focusedIndex, columns.count - 1)
         // What follows the last column depends on that column only.
         if reloadedLast { updateTrailingColumn() }
+    }
+
+    /// The filter narrows the column being worked in; the folders leading to it stay whole.
+    private func options(forColumn index: Int) -> ListingOptions {
+        guard index != focusedIndex else { return options }
+        var o = options
+        o.filter = ""
+        return o
     }
 
     func select(_ urls: [URL]) {
@@ -211,7 +223,11 @@ final class ColumnBrowserViewController: NSViewController, FileBrowser {
 
     @discardableResult
     private func appendColumn(for directory: URL) -> FolderColumn {
-        let col = FolderColumn(directory: directory, options: options, preferences: preferences, rowSize: rowSize)
+        // A new column is never the one being filtered: the filter goes away when the
+        // focus moves to another column.
+        var unfiltered = options
+        unfiltered.filter = ""
+        let col = FolderColumn(directory: directory, options: unfiltered, preferences: preferences, rowSize: rowSize)
         col.index = columns.count
         col.onSelectionChange = { [weak self, weak col] in
             guard let self, let col else { return }

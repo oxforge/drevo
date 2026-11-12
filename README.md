@@ -116,7 +116,7 @@ system-wide shortcut; a unit test checks the defaults against that list.
 | Duplicate, Make alias, Copy path, Get Info | ⌘D, ⌃⌘A, ⌥⌘C, ⌘I |
 | Undo / Redo | ⌘Z / ⇧⌘Z |
 | Go to folder (Tab completes) | ⌘L, ⇧⌘G, type `/` or `~`, or click the path bar's blank space / current folder (full path, selected) |
-| Filter this folder (Esc clears) | ⌘F |
+| Filter this folder: names containing the text, or a `*`/`?` pattern for the whole name (`*.png`); ⌫ deletes, Esc clears, leaving the folder clears it | just type, or ⌘F |
 | Show hidden files | ⇧⌘. |
 | List / Columns | ⌘2 / ⌘3 |
 | Sort by Name / Kind / Date Modified / Size (again reverses) | ⌃⌥⌘1 / ⌃⌥⌘2 / ⌃⌥⌘5 / ⌃⌥⌘6, or the sort button in the pane header |

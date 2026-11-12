@@ -42,7 +42,7 @@ public struct FileSort: Equatable, Codable, Sendable {
 public struct ListingOptions: Equatable, Sendable {
     public var showHidden: Bool
     public var sort: FileSort
-    /// Case-insensitive substring filter on the name; empty = no filter.
+    /// Name filter (`NameFilter`: text or a `*`/`?` pattern); empty = no filter.
     public var filter: String
 
     public init(showHidden: Bool = false, sort: FileSort = FileSort(), filter: String = "") {
@@ -89,9 +89,9 @@ public enum DirectoryListing {
 
     public static func apply(_ options: ListingOptions, to items: [FileItem]) -> [FileItem] {
         var result = options.showHidden ? items : items.filter { !$0.isHidden }
-        let needle = options.filter.trimmingCharacters(in: .whitespaces)
-        if !needle.isEmpty {
-            result = result.filter { $0.name.range(of: needle, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
+        let filter = NameFilter(options.filter)
+        if !filter.isEmpty {
+            result = result.filter { filter.matches($0.name) }
         }
         return sorted(result, by: options.sort)
     }

@@ -130,7 +130,7 @@ public enum CommandRegistry {
         CommandSpec(.back, "Back", .navigation, keys: ["cmd+["]),
         CommandSpec(.forward, "Forward", .navigation, keys: ["cmd+]"]),
         CommandSpec(.goToPath, "Go to Folder…", .navigation, keys: ["cmd+l", "shift+cmd+g"], help: "Type a path; Tab completes"),
-        CommandSpec(.filter, "Filter…", .navigation, keys: ["cmd+f"], help: "Show only names containing the text"),
+        CommandSpec(.filter, "Filter…", .navigation, keys: ["cmd+f"], help: "Show only matching names (or just start typing; * and ? are wildcards)"),
         // Go — exactly Finder's.
         CommandSpec(.goHome, "Home", .go, keys: ["shift+cmd+h"]),
         CommandSpec(.goDesktop, "Desktop", .go, keys: ["shift+cmd+d"]),

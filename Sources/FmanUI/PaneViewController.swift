@@ -262,6 +262,23 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
         if let first = browser.visibleItems.first, browser.selectedItems.isEmpty { browser.select([first.url]) }
     }
 
+    /// Typing in the file list: `text` goes at the end of the filter; focus stays in the list.
+    func typeIntoFilter(_ text: String) {
+        header.showFilter(filter + text)
+        setFilter(filter + text)
+    }
+
+    /// Backspace in the file list; removing the last character removes the filter.
+    func deleteFilterCharacter() {
+        let shorter = String(filter.dropLast())
+        if shorter.isEmpty {
+            clearFilter()
+        } else {
+            header.showFilter(shorter)
+            setFilter(shorter)
+        }
+    }
+
     func clearFilter(reload doReload: Bool = true) {
         header.clearFilter()
         guard !filter.isEmpty else { return }
@@ -414,6 +431,8 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
     // MARK: FileBrowserDelegate
 
     func browser(_ browser: FileBrowser, didMoveTo directory: URL) {
+        // A filter belongs to the folder it was typed in.
+        if !filter.isEmpty || header.isFiltering { clearFilter() }
         history.visit(directory)
         refreshChrome()
         onChange?(self)
@@ -438,10 +457,27 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
             clearFilter()
             return true
         }
-        guard let id = env.keyMap.command(for: event) else { return false }
+        guard let id = env.keyMap.command(for: event) else { return handleFilterTyping(event) }
         // Arrow keys fall through to the table when the command has nothing to do.
         if id == .levelDown { return perform(.levelDown) }
         return dispatcher?.perform(id) ?? perform(id)
+    }
+
+    /// Keys no command claims: printable characters extend the filter, Backspace shortens it.
+    private func handleFilterTyping(_ event: NSEvent) -> Bool {
+        let mods = event.modifierFlags.intersection([.command, .control])
+        guard mods.isEmpty, let chars = event.characters, !chars.isEmpty else { return false }
+        if event.keyCode == 51 { // Backspace
+            guard !filter.isEmpty else { return false }
+            deleteFilterCharacter()
+            return true
+        }
+        let printable = chars.unicodeScalars.allSatisfy { s in
+            !CharacterSet.controlCharacters.contains(s) && !(0xF700...0xF8FF).contains(s.value) // function keys
+        }
+        guard printable else { return false }
+        typeIntoFilter(chars)
+        return true
     }
 
     func browser(_ browser: FileBrowser, open items: [FileItem]) {

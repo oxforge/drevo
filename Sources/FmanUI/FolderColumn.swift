@@ -35,7 +35,8 @@ final class FolderColumn: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         tableView.headerView = nil
         tableView.style = .inset
         tableView.allowsMultipleSelection = true
-        tableView.allowsTypeSelect = true
+        // Typing filters the column (the pane handles it) instead of jumping to a name.
+        tableView.allowsTypeSelect = false
         tableView.rowHeight = rowSize.rowHeight
         tableView.intercellSpacing = NSSize(width: 0, height: 0)
         tableView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
@@ -177,10 +178,6 @@ final class FolderColumn: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 
     func tableViewSelectionDidChange(_ notification: Notification) {
         if !suppressNotify { onSelectionChange?() }
-    }
-
-    func tableView(_ tableView: NSTableView, typeSelectStringFor tableColumn: NSTableColumn?, row: Int) -> String? {
-        items[row].name
     }
 
     // MARK: Drag & drop

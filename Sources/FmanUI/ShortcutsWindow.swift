@@ -24,7 +24,7 @@ enum ShortcutsWindow {
                 ]))
             }
         }
-        out.append(NSAttributedString(string: "\nAlso: type to jump to a name · / or ~ edits the path · Esc clears a filter · fn↓/fn↑ page, fn←/fn→ first/last (⇧ extends)\n", attributes: [
+        out.append(NSAttributedString(string: "\nAlso: type to filter (* and ? are wildcards; ⌫ deletes, Esc clears) · / or ~ edits the path · fn↓/fn↑ page, fn←/fn→ first/last (⇧ extends)\n", attributes: [
             .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor,
         ]))
         return out

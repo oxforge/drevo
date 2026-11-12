@@ -138,6 +138,12 @@ final class PaneHeaderView: NSView, NSTextFieldDelegate, NSSearchFieldDelegate {
         window?.makeFirstResponder(filterField)
     }
 
+    /// Shows a filter typed in the file list, leaving the keyboard where it is.
+    func showFilter(_ text: String) {
+        filterField.isHidden = false
+        filterField.stringValue = text
+    }
+
     func clearFilter() {
         filterField.stringValue = ""
         filterField.isHidden = true
