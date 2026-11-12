@@ -79,3 +79,16 @@ import Testing
         #expect(wc.env.keyMap.command(for: .named(.return)) == .open)
     }
 }
+
+@Test func folderViewerRefusalIsExplained() {
+    // What NSWorkspace returns on macOS 26 for public.folder (reproduced on this machine).
+    let refused = NSError(domain: NSCocoaErrorDomain, code: 256,
+                          userInfo: [NSUnderlyingErrorKey: NSError(domain: NSOSStatusErrorDomain, code: -50)])
+    let p = FolderViewerProblem(refused)
+    #expect(p.refusedByMacOS)
+    #expect(p.title == "macOS keeps folders in Finder.")
+    #expect(p.detail.contains("Open folders in fman"))
+    let other = FolderViewerProblem(NSError(domain: NSOSStatusErrorDomain, code: -10814))
+    #expect(!other.refusedByMacOS)
+    #expect(other.detail.contains("-10814"), "other failures show their code instead of a vague message")
+}

@@ -73,17 +73,25 @@ ask again after a rebuild. To keep the grants, sign with a stable identity:
 
 ## Using fman instead of Finder
 
-Everything is opt-in, under **Settings ▸ Finder**:
+macOS doesn't let another app fully take Finder's place. On macOS 26, Launch Services
+**refuses to make any app but Finder the default for folders**. Both
+`NSWorkspace.setDefaultApplication(... .folder)` and the older
+`LSSetDefaultRoleHandlerForContentType("public.folder", …)` return paramErr (-50). The
+Settings button still asks, in case a macOS version allows it, and explains when it
+doesn't.
 
-| Setting | Effect | Undo |
-| --- | --- | --- |
-| Use fman for Folders | Folders opened from other apps, the Dock, or `open ~/x` in Terminal open in fman | Restore Finder (same place) |
-| Use fman for "Show in Finder" | Sets the system `NSFileViewer` default, so apps that honour it reveal files in fman. Apps pick it up after a restart | Same toggle |
-| Open fman at login | Registers fman as a login item | Same toggle |
+What does work, under **Settings ▸ Finder** and from Finder itself:
 
-Finder keeps running, because it draws the Desktop and owns the Trash. fman also adds
-**Services ▸ Open in fman** to Finder's context menu, and folders dropped on fman's Dock
-icon open in the active pane.
+| Way in | How |
+| --- | --- |
+| Finder's right-click menu | Services ▸ **Open in fman**. Give it a shortcut in System Settings ▸ Keyboard ▸ Keyboard Shortcuts ▸ Services |
+| Finder's toolbar | ⌘-drag fman.app from Applications into the toolbar, then drop folders on it |
+| Dock | Drop folders on fman's icon |
+| Terminal | `open -a fman .` |
+| "Show in Finder" in other apps | Settings ▸ Finder ▸ *Use fman for "Show in Finder"* sets the system `NSFileViewer` default; apps pick it up after a restart, and some always use Finder |
+| Login | Settings ▸ Finder ▸ *Open fman at login* |
+
+Finder keeps running, because it draws the Desktop and owns the Trash.
 
 ## Keyboard
 

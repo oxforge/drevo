@@ -44,14 +44,20 @@ final class SettingsModel: ObservableObject {
         NSWorkspace.shared.urlForApplication(toOpen: .folder)?.standardizedFileURL == Bundle.main.bundleURL.standardizedFileURL
     }
 
+    /// Set after macOS refused to change the folder app, to explain it in the tab.
+    @Published var folderViewerRefused = false
+
     func setDefaultFolderViewer(_ useFman: Bool) {
         let app = useFman ? Bundle.main.bundleURL : URL(fileURLWithPath: "/System/Library/CoreServices/Finder.app")
         NSWorkspace.shared.setDefaultApplication(at: app, toOpen: .folder) { [weak self] error in
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated {
-                    if let error { self?.env.operations.prompts.showError("Couldn’t change the folder viewer.", detail: error.localizedDescription, in: nil) }
-                    self?.refreshIntegration()
+            onMainRunLoop {
+                guard let self else { return }
+                if let error {
+                    let problem = FolderViewerProblem(error)
+                    self.folderViewerRefused = problem.refusedByMacOS
+                    self.env.operations.prompts.showError(problem.title, detail: problem.detail, in: nil)
                 }
+                self.refreshIntegration()
             }
         }
     }
@@ -71,6 +77,36 @@ final class SettingsModel: ObservableObject {
             }
             refreshIntegration()
             tick += 1
+        }
+    }
+}
+
+/// Why changing the default folder app failed, in words a person can act on.
+///
+/// macOS 26 refuses to make any app but Finder the folder opener: both
+/// `NSWorkspace.setDefaultApplication(at:toOpen: .folder)` and the older
+/// `LSSetDefaultRoleHandlerForContentType("public.folder", …)` return paramErr (-50).
+struct FolderViewerProblem {
+    let refusedByMacOS: Bool
+    let title: String
+    let detail: String
+
+    init(_ error: Error) {
+        let ns = error as NSError
+        let underlying = ns.userInfo[NSUnderlyingErrorKey] as? NSError
+        let status = ns.domain == NSOSStatusErrorDomain ? ns.code : (underlying?.domain == NSOSStatusErrorDomain ? underlying!.code : nil)
+        if status == -50 {
+            refusedByMacOS = true
+            title = "macOS keeps folders in Finder."
+            detail = """
+            This version of macOS doesn’t let any other app become the app that opens folders \
+            (Launch Services refuses the change). Ways to get folders into fman instead are listed \
+            under “Open folders in fman” in this tab.
+            """
+        } else {
+            refusedByMacOS = false
+            title = "Couldn’t change the folder viewer."
+            detail = "\(ns.localizedDescription) (\(underlying.map { "\($0.domain) \($0.code)" } ?? "\(ns.domain) \(ns.code)"))"
         }
     }
 }
@@ -186,7 +222,7 @@ private struct ShellTab: View {
     }
 }
 
-private struct IntegrationTab: View {
+struct IntegrationTab: View {
     @ObservedObject var model: SettingsModel
     var body: some View {
         Form {
@@ -198,9 +234,26 @@ private struct IntegrationTab: View {
                     Button("Restore Finder") { model.setDefaultFolderViewer(false) }
                         .disabled(!model.isDefaultFolderViewer)
                 }
-                Text("Folders you open from other apps, the Dock or `open` in Terminal go to fman. Finder keeps running for the Desktop and Trash.")
-                    .font(.caption).foregroundStyle(.secondary)
+                if model.folderViewerRefused {
+                    Text("macOS refused: on this version folders always open in Finder, and no other app can take that over. Use the options below instead.")
+                        .font(.caption).foregroundStyle(.orange)
+                } else {
+                    Text("Asks macOS to open folders from other apps, the Dock or `open` in Terminal in fman. Recent macOS versions refuse this; fman will tell you if so.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             } header: { Text("Default folder viewer") }
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("• In Finder, right-click a folder ▸ Services ▸ **Open in fman**. Give it a shortcut in System Settings ▸ Keyboard ▸ Keyboard Shortcuts ▸ Services.")
+                    Text("• ⌘-drag fman.app from Applications into Finder’s toolbar, then drop folders on it.")
+                    Text("• Drop folders on fman’s Dock icon.")
+                    Text("• In Terminal: `open -a fman .`")
+                }
+                .font(.caption)
+                Button("Open Keyboard Shortcuts…") {
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension")!)
+                }
+            } header: { Text("Open folders in fman") }
             Section {
                 Toggle("Use fman for “Show in Finder” in other apps", isOn: Binding(
                     get: { model.revealRedirect }, set: { model.revealRedirect = $0 }))
