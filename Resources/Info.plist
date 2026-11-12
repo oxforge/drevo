@@ -43,7 +43,7 @@
 				<string>Open in __APP_NAME__</string>
 			</dict>
 			<key>NSMessage</key>
-			<string>openInFman</string>
+			<string>openInDrevo</string>
 			<key>NSPortName</key>
 			<string>__APP_NAME__</string>
 			<key>NSRequiredContext</key>

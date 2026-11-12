@@ -1,4 +1,4 @@
-// Draws the fman app icon into an .iconset folder (convert with `iconutil -c icns`).
+// Draws the Drevo app icon into an .iconset folder (convert with `iconutil -c icns`).
 // Usage: swift scripts/make-icon.swift build/AppIcon.iconset
 //
 // The design ("Glass panes", deep indigo): an indigo tile holding two panes. The left pane

@@ -2,17 +2,17 @@
 import PackageDescription
 
 let package = Package(
-    name: "fman",
+    name: "drevo",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "fman", targets: ["fman"]),
+        .executable(name: "drevo", targets: ["drevo"]),
     ],
     targets: [
-        .target(name: "FmanCore"),
-        .target(name: "FmanUI", dependencies: ["FmanCore"]),
-        .executableTarget(name: "fman", dependencies: ["FmanUI"]),
-        .testTarget(name: "FmanCoreTests", dependencies: ["FmanCore"]),
-        .testTarget(name: "FmanUITests", dependencies: ["FmanUI", "FmanCore"]),
+        .target(name: "DrevoCore"),
+        .target(name: "DrevoUI", dependencies: ["DrevoCore"]),
+        .executableTarget(name: "drevo", dependencies: ["DrevoUI"]),
+        .testTarget(name: "DrevoCoreTests", dependencies: ["DrevoCore"]),
+        .testTarget(name: "DrevoUITests", dependencies: ["DrevoUI", "DrevoCore"]),
     ],
     swiftLanguageModes: [.v5]
 )

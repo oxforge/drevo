@@ -1,4 +1,4 @@
-# fman
+# Drevo
 
 A native dual-pane file manager for macOS, built to replace Finder for everyday use.
 Miller columns like Finder's Column view, two (up to four) panes like Midnight Commander,
@@ -46,7 +46,7 @@ make run
 
 | Command | What it does |
 | --- | --- |
-| `make app` | Release build, assembles and ad-hoc signs `build/fman.app` |
+| `make app` | Release build, assembles and ad-hoc signs `build/Drevo.app` |
 | `make run` | `make app`, then opens it |
 | `make test` | Unit and UI-controller tests (swift-testing) |
 | `make snapshot` | Renders the window to `build/snapshots/{light,dark}.png` (add `SNAP_ARGS="--open ~/some/folder"`) |
@@ -59,7 +59,7 @@ The Makefile works around two Command-Line-Tools quirks: it passes `--build-syst
 ## Install
 
 ```bash
-cp -R build/fman.app /Applications/
+cp -R build/Drevo.app /Applications/
 ```
 
 Use `~/Applications` if you prefer. Install before switching on any of the Finder
@@ -71,7 +71,7 @@ Settings ▸ Privacy & Security ▸ Full Disk Access. `make app` signs ad hoc, s
 ask again after a rebuild. To keep the grants, sign with a stable identity:
 `make app SIGN_ID="Apple Development: Your Name (TEAMID)"`.
 
-## Using fman instead of Finder
+## Using Drevo instead of Finder
 
 macOS doesn't let another app fully take Finder's place. On macOS 26, Launch Services
 **refuses to make any app but Finder the default for folders**. Both
@@ -84,18 +84,18 @@ What does work, under **Settings ▸ Finder** and from Finder itself:
 
 | Way in | How |
 | --- | --- |
-| Finder's right-click menu | Services ▸ **Open in fman**. Give it a shortcut in System Settings ▸ Keyboard ▸ Keyboard Shortcuts ▸ Services |
-| Finder's toolbar | ⌘-drag fman.app from Applications into the toolbar, then drop folders on it |
-| Dock | Drop folders on fman's icon |
-| Terminal | `open -a fman .` |
-| "Show in Finder" in other apps | Settings ▸ Finder ▸ *Use fman for "Show in Finder"* sets the system `NSFileViewer` default; apps pick it up after a restart, and some always use Finder |
-| Login | Settings ▸ Finder ▸ *Open fman at login* |
+| Finder's right-click menu | Services ▸ **Open in Drevo**. Give it a shortcut in System Settings ▸ Keyboard ▸ Keyboard Shortcuts ▸ Services |
+| Finder's toolbar | ⌘-drag Drevo.app from Applications into the toolbar, then drop folders on it |
+| Dock | Drop folders on Drevo's icon |
+| Terminal | `open -a Drevo .` |
+| "Show in Finder" in other apps | Settings ▸ Finder ▸ *Use Drevo for "Show in Finder"* sets the system `NSFileViewer` default; apps pick it up after a restart, and some always use Finder |
+| Login | Settings ▸ Finder ▸ *Open Drevo at login* |
 
 Finder keeps running, because it draws the Desktop and owns the Trash.
 
 ## Keyboard
 
-fman keeps Finder's shortcuts and adds the commander ones. Nothing uses a macOS
+Drevo keeps Finder's shortcuts and adds the commander ones. Nothing uses a macOS
 system-wide shortcut; a unit test checks the defaults against that list.
 
 | Action | Keys |
@@ -131,7 +131,7 @@ on. Every frequent F-key action also has a key that needs no Fn.
 
 ### Remapping keys
 
-Help ▸ **Edit keybindings.json** creates `~/Library/Application Support/fman/keybindings.json`
+Help ▸ **Edit keybindings.json** creates `~/Library/Application Support/drevo/keybindings.json`
 and a `keybindings.defaults.json` reference beside it. Map command ids to keys:
 
 ```json
@@ -145,7 +145,7 @@ and a `keybindings.defaults.json` reference beside it. Map command ids to keys:
 
 Keys are written like `cmd+shift+n`, `opt+cmd+backspace`, `f5`, `tab` or `!`. A value is
 one key or a list of keys; `null` or `[]` unbinds a command. Changes apply when you switch
-back to fman, and unknown commands, bad keys or clashes are reported. A key that can't be
+back to Drevo, and unknown commands, bad keys or clashes are reported. A key that can't be
 read is skipped, and if none of a command's keys can be read (a typo), the command keeps
 the keys it had.
 
@@ -154,7 +154,7 @@ the keys it had.
 The bar under the panes runs commands in the active pane's folder:
 
 - **Return** runs the command with your login shell, the one set in your user account
-  (the same one Terminal uses). fman loads your shell config once (`shell -l -i`) and
+  (the same one Terminal uses). Drevo loads your shell config once (`shell -l -i`) and
   reuses its PATH, environment, aliases and functions, so each command starts in
   milliseconds instead of re-running `~/.zshrc`. It reloads when a startup file changes,
   after an hour, or via Settings ▸ Shell ▸ Reload (zsh and bash; other shells load their
@@ -163,7 +163,7 @@ The bar under the panes runs commands in the active pane's folder:
   timing. The console keeps the latest 400,000 characters, and output that arrives
   faster than it can be shown is skipped, with an "… output skipped …" note.
   ⌘. stops the command: Ctrl-C to its whole process group, then a hard kill if it is
-  still running two seconds later. Closing the window or quitting fman stops it too.
+  still running two seconds later. Closing the window or quitting Drevo stops it too.
   A command is finished when its shell exits, even if it left a process in the
   background (`server &`): the console doesn't wait for that process and doesn't show
   what it prints later, so send its output to a file.
@@ -179,16 +179,16 @@ shell config" in Settings ▸ Shell.
 ## Project layout
 
 ```
-Sources/FmanCore   Foundation-only model: listing, sorting, history, names, keymap and
-                   command registry, file operations + copy engine + undo records,
-                   FSEvents watcher, shell runner. Fully unit-tested.
-Sources/FmanUI     AppKit app: window, panes, List and Column browsers, sidebar, path bar,
-                   operations UI, shell UI, palette, settings (SwiftUI).
-Sources/fman       Executable entry point.
-Tests/             FmanCoreTests (engine) and FmanUITests (real windows driven with
-                   synthetic key events, fake drags, scripted prompts).
-scripts/           make-icon.swift draws the app icon.
-Resources/         Info.plist template.
+Sources/DrevoCore   Foundation-only model: listing, sorting, history, names, keymap and
+                    command registry, file operations + copy engine + undo records,
+                    FSEvents watcher, shell runner. Fully unit-tested.
+Sources/DrevoUI     AppKit app: window, panes, List and Column browsers, sidebar, path bar,
+                    operations UI, shell UI, palette, settings (SwiftUI).
+Sources/drevo       Executable entry point.
+Tests/              DrevoCoreTests (engine) and DrevoUITests (real windows driven with
+                    synthetic key events, fake drags, scripted prompts).
+scripts/            make-icon.swift draws the app icon.
+Resources/          Info.plist template.
 ```
 
 Deferred work is tracked in [TODO.md](TODO.md).
