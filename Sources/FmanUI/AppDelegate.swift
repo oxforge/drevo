@@ -222,16 +222,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: "Keep Running")
         guard alert.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
         ops.cancelAll()
-        var observer: NSObjectProtocol?
-        observer = NotificationCenter.default.addObserver(forName: OperationsCenter.jobsDidChange, object: ops, queue: .main) { _ in
+        quitObserver = NotificationCenter.default.addObserver(forName: OperationsCenter.jobsDidChange, object: ops, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard ops.jobs.isEmpty else { return }
-                if let observer { NotificationCenter.default.removeObserver(observer) }
+                guard let self, self.env.operations.jobs.isEmpty else { return }
+                if let token = self.quitObserver { NotificationCenter.default.removeObserver(token) }
+                self.quitObserver = nil
                 NSApp.reply(toApplicationShouldTerminate: true)
             }
         }
         return .terminateLater
     }
+
+    /// Waits for cancelled transfers to finish cleaning up before quitting.
+    private var quitObserver: NSObjectProtocol?
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag { newWindow(nil) }

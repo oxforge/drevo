@@ -106,5 +106,5 @@ enum KeyCode {
 @MainActor
 func press(_ event: NSEvent, in window: NSWindow) {
     if NSApp.mainMenu?.performKeyEquivalent(with: event) == true { return }
-    (window.firstResponder as? NSResponder)?.keyDown(with: event)
+    window.firstResponder?.keyDown(with: event)
 }

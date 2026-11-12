@@ -4,7 +4,7 @@ import FmanCore
 /// Builds the menu bar from the command registry so menus always show the live keymap.
 @MainActor
 enum MainMenu {
-    nonisolated(unsafe) static let commandAction = #selector(MainWindowController.performCommand(_:))
+    nonisolated static let commandAction = #selector(MainWindowController.performCommand(_:))
 
     static func build(keyMap: KeyMap) -> NSMenu {
         let main = NSMenu()

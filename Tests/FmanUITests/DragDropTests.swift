@@ -5,7 +5,7 @@ import Testing
 
 /// Stand-in for a real drag: a private pasteboard with file URLs and a modifier mask.
 @MainActor
-final class FakeDrag: NSObject, NSDraggingInfo {
+final class FakeDrag: NSObject, @preconcurrency NSDraggingInfo {
     let pasteboard = NSPasteboard(name: NSPasteboard.Name("fman.drag.\(UUID().uuidString)"))
     var mask: NSDragOperation
 

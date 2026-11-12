@@ -31,8 +31,9 @@ enum RowSize: Int, CaseIterable {
 /// App settings. Changing any value posts `Preferences.didChange` with the key in userInfo.
 @MainActor
 final class Preferences {
-    static let didChange = Notification.Name("fman.preferencesDidChange")
-    static let changedKey = "key"
+    nonisolated static let didChange = Notification.Name("fman.preferencesDidChange")
+    /// userInfo key naming the setting that changed; read in notification callbacks.
+    nonisolated static let changedKey = "key"
 
     private let store: SettingsStore
 

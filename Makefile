@@ -21,8 +21,10 @@ SHELL := /bin/bash
 
 .PHONY: build test app run snapshot icon clean
 
+# SwiftPM prints a deprecation note for --build-system native on every run; the flag is
+# still required without Xcode, so the note is filtered (exit status is kept).
 build:
-	swift build $(SWIFT_FLAGS) -c $(CONFIG)
+	set -o pipefail; swift build $(SWIFT_FLAGS) -c $(CONFIG) 2>&1 | grep -v "has been deprecated"
 
 test:
 	set -o pipefail; swift test $(SWIFT_FLAGS) $(TEST_FLAGS) $(TEST_ARGS) 2>&1 | grep -v "has been deprecated"
