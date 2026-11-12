@@ -3,13 +3,34 @@ import Foundation
 
 /// What a listing is sorted by.
 public enum SortKey: String, Codable, CaseIterable, Sendable {
-    case name, modified, size, kind
+    case name, modified, size, kind, created
+
+    /// The direction a fresh sort starts in, as in Finder: names and kinds A→Z,
+    /// dates newest first, sizes largest first.
+    public var defaultAscending: Bool {
+        switch self {
+        case .name, .kind: return true
+        case .modified, .created, .size: return false
+        }
+    }
 }
 
 public struct FileSort: Equatable, Codable, Sendable {
     public var key: SortKey
     public var ascending: Bool
     public var foldersFirst: Bool
+
+    /// Picking the current key again reverses it; a new key starts in its natural direction.
+    public func choosing(_ newKey: SortKey) -> FileSort {
+        var s = self
+        if newKey == key {
+            s.ascending.toggle()
+        } else {
+            s.key = newKey
+            s.ascending = newKey.defaultAscending
+        }
+        return s
+    }
 
     public init(key: SortKey = .name, ascending: Bool = true, foldersFirst: Bool = true) {
         self.key = key
@@ -94,6 +115,7 @@ public enum DirectoryListing {
             case .modified: result = compareOptional(a.modified, b.modified)
             case .size: result = compareOptional(a.size, b.size)
             case .kind: result = cmp(kinds[i], kinds[j])
+            case .created: result = compareOptional(a.created, b.created)
             }
             if result == .orderedSame {
                 // Stable tie-break on name, always ascending, so equal keys read naturally.

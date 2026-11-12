@@ -94,10 +94,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
     private var observers: [NSObjectProtocol] = []
     private var watcher: DirectoryWatcher?
 
-    init(env: AppEnvironment, directories: [URL], viewModes: [ViewMode] = [], autosave: Bool = true) {
+    init(env: AppEnvironment, directories: [URL], viewModes: [ViewMode] = [], sorts: [FileSort] = [], autosave: Bool = true) {
         self.env = env
         sidebar = SidebarViewController(env: env)
-        let group = PaneGroupViewController(directories: directories, viewModes: viewModes, env: env)
+        let group = PaneGroupViewController(directories: directories, viewModes: viewModes, sorts: sorts, env: env)
         workspace = WorkspaceViewController(paneGroup: group)
         commandBar = CommandBar(preferences: env.preferences)
         shell = ShellSession(console: workspace.console, preferences: env.preferences)
@@ -329,6 +329,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
             return pane.canPerformFileCommand(id)
         case .quickLook: return !pane.selectedItems.isEmpty
         case .openTerminal, .runCommand, .toggleConsole, .goToPath, .filter, .commandPalette: return true
+        case .sortByName, .sortByKind, .sortByModified, .sortByCreated, .sortBySize, .reverseSort: return true
         case .stopCommand: return shell.isRunning
         case .runInTerminal: return commandBar.hasFocus
         case .enclosingFolder, .levelUp, .levelDown, .goHome, .goDesktop, .goDocuments, .goDownloads,
@@ -359,6 +360,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
         case .toggleSidebar: menuItem.state = sidebarItem.isCollapsed ? .off : .on
         case .listView: menuItem.state = paneGroup.activePane.viewMode == .list ? .on : .off
         case .columnsView: menuItem.state = paneGroup.activePane.viewMode == .columns ? .on : .off
+        case .sortByName, .sortByKind, .sortByModified, .sortByCreated, .sortBySize:
+            let key: SortKey = [CommandID.sortByName: .name, .sortByKind: .kind, .sortByModified: .modified,
+                                .sortByCreated: .created, .sortBySize: .size][id]!
+            menuItem.state = paneGroup.activePane.sort.key == key ? .on : .off
         default: break
         }
         let category = CommandRegistry.spec(id)?.category

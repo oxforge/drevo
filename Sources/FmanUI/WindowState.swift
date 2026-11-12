@@ -1,3 +1,4 @@
+import FmanCore
 import Foundation
 
 /// What a window looked like, saved so the next launch opens the same panes.
@@ -5,6 +6,14 @@ struct WindowState: Codable, Equatable {
     struct Pane: Codable, Equatable {
         var path: String
         var viewMode: String
+        /// Absent in state saved by older builds.
+        var sortKey: String?
+        var ascending: Bool?
+
+        var sort: FileSort {
+            guard let key = sortKey.flatMap(SortKey.init(rawValue:)) else { return FileSort() }
+            return FileSort(key: key, ascending: ascending ?? key.defaultAscending)
+        }
     }
 
     var panes: [Pane]
@@ -12,6 +21,7 @@ struct WindowState: Codable, Equatable {
 
     var directories: [URL] { panes.map { URL(fileURLWithPath: $0.path) } }
     var viewModes: [ViewMode] { panes.map { ViewMode(rawValue: $0.viewMode) ?? .columns } }
+    var sorts: [FileSort] { panes.map(\.sort) }
 
     func encoded() -> Data? { try? JSONEncoder().encode(self) }
 
@@ -38,7 +48,8 @@ struct WindowState: Codable, Equatable {
 
 extension PaneGroupViewController {
     var state: WindowState {
-        WindowState(panes: panes.map { .init(path: $0.currentDirectory.path, viewMode: $0.viewMode.rawValue) },
+        WindowState(panes: panes.map { .init(path: $0.currentDirectory.path, viewMode: $0.viewMode.rawValue,
+                                             sortKey: $0.sort.key.rawValue, ascending: $0.sort.ascending) },
                     activeIndex: activeIndex)
     }
 }

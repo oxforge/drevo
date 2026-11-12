@@ -54,6 +54,12 @@ enum MainMenu {
 
         let view = submenu(main, "View")
         add(view, [.listView, .columnsView], keyMap)
+        let sortBy = view.addItem(withTitle: "Sort By", action: nil, keyEquivalent: "")
+        let sortMenu = NSMenu(title: "Sort By")
+        add(sortMenu, [.sortByName, .sortByKind, .sortByModified, .sortByCreated, .sortBySize], keyMap)
+        sortMenu.addItem(.separator())
+        add(sortMenu, [.reverseSort], keyMap)
+        sortBy.submenu = sortMenu
         view.addItem(.separator())
         add(view, [.toggleHidden], keyMap)
         add(view, [.biggerRows, .smallerRows], keyMap)

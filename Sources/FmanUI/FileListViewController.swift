@@ -54,8 +54,11 @@ final class FileListViewController: NSViewController, FileBrowser, NSTableViewDa
             c.sortDescriptorPrototype = NSSortDescriptor(key: col.rawValue, ascending: true)
             switch col {
             case .name: c.width = 260; c.minWidth = 120; c.resizingMask = [.autoresizingMask, .userResizingMask]
+                c.sortDescriptorPrototype = NSSortDescriptor(key: col.rawValue, ascending: SortKey.name.defaultAscending)
             case .modified: c.width = 150; c.minWidth = 80
+                c.sortDescriptorPrototype = NSSortDescriptor(key: col.rawValue, ascending: false)
             case .size: c.width = 70; c.minWidth = 50; c.headerCell.alignment = .right
+                c.sortDescriptorPrototype = NSSortDescriptor(key: col.rawValue, ascending: false)
             case .kind: c.width = 110; c.minWidth = 60
             }
             tableView.addTableColumn(c)
@@ -122,8 +125,10 @@ final class FileListViewController: NSViewController, FileBrowser, NSTableViewDa
     }
 
     func reload(options newOptions: ListingOptions) {
+        let sortChanged = newOptions.sort != options.sort
         options = newOptions
         _ = view
+        if sortChanged { applySortIndicator() }
         let selected = selectedItems.map(\.url)
         let cursor = tableView.cursorRow >= 0 && tableView.cursorRow < visibleItems.count ? visibleItems[tableView.cursorRow].url : nil
         let visibleRect = scrollView.contentView.bounds
@@ -199,9 +204,18 @@ final class FileListViewController: NSViewController, FileBrowser, NSTableViewDa
         }
     }
 
+    /// Mirrors the sort in the column headers (none for keys without a column, like
+    /// Date Created). Programmatic changes don't echo back as a user sort.
+    private var applyingSortIndicator = false
+
     private func applySortIndicator() {
-        let key: Column = Column.allCases.first { $0.sortKey == options.sort.key } ?? .name
-        tableView.sortDescriptors = [NSSortDescriptor(key: key.rawValue, ascending: options.sort.ascending)]
+        applyingSortIndicator = true
+        defer { applyingSortIndicator = false }
+        if let column = Column.allCases.first(where: { $0.sortKey == options.sort.key }) {
+            tableView.sortDescriptors = [NSSortDescriptor(key: column.rawValue, ascending: options.sort.ascending)]
+        } else {
+            tableView.sortDescriptors = []
+        }
     }
 
     var sortOrder: FileSort { options.sort }
@@ -254,7 +268,8 @@ final class FileListViewController: NSViewController, FileBrowser, NSTableViewDa
     }
 
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
-        guard let d = tableView.sortDescriptors.first, let key = d.key, let col = Column(rawValue: key) else { return }
+        guard !applyingSortIndicator,
+              let d = tableView.sortDescriptors.first, let key = d.key, let col = Column(rawValue: key) else { return }
         var sort = options.sort
         sort.key = col.sortKey
         sort.ascending = d.ascending

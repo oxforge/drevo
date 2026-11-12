@@ -6,7 +6,9 @@ Finder's shortcuts plus the commander keys (Tab, F5 copy, F6 move, …), a built
 line that runs in the current folder, and a Settings window for the rest.
 
 - **Two panes, two views.** Each pane shows Columns (Miller columns with a file preview)
-  or List (sortable Name/Date/Size/Kind). ⌘3 / ⌘2 switch the active pane.
+  or List (Name/Date/Size/Kind). ⌘3 / ⌘2 switch the active pane. Each pane sorts by name,
+  kind, date modified, date created or size (header button, View ▸ Sort By, or ⌃⌥⌘ +
+  number), and remembers it.
 - **Copy between panes in one key.** F5 copies and F6 moves the selection to the other
   pane, or ⇧⌘C / ⇧⌘M on a laptop keyboard. Drag & drop works between panes and with other
   apps, using Finder's rules: the same volume moves, another volume copies, ⌥ forces a
@@ -105,6 +107,7 @@ system-wide shortcut; a unit test checks the defaults against that list.
 | Filter this folder (Esc clears) | ⌘F |
 | Show hidden files | ⇧⌘. |
 | List / Columns | ⌘2 / ⌘3 |
+| Sort by Name / Kind / Date Modified / Size (again reverses) | ⌃⌥⌘1 / ⌃⌥⌘2 / ⌃⌥⌘5 / ⌃⌥⌘6, or the sort button in the pane header |
 | Open in other pane, Swap panes | ⌥⌘O, ⌘U |
 | Home, Desktop, Documents, Downloads, Applications, Utilities | ⇧⌘H, ⇧⌘D, ⇧⌘O, ⌥⌘L, ⇧⌘A, ⇧⌘U |
 | Open in Terminal | ⌥⌘T |

@@ -29,6 +29,7 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
 
     let header = PaneHeaderView()
     let statusBar = StatusBarView()
+    let sortButton = SortButton()
     private let browserContainer = NSView()
 
     var isActive = false {
@@ -38,9 +39,10 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
     var currentDirectory: URL { browser.currentDirectory }
     var selectedItems: [FileItem] { browser.selectedItems }
 
-    init(directory: URL, viewMode: ViewMode, env: AppEnvironment) {
+    init(directory: URL, viewMode: ViewMode, sort: FileSort = FileSort(), env: AppEnvironment) {
         self.env = env
         self.viewMode = viewMode
+        self.sort = sort
         self.history = NavigationHistory(start: directory)
         super.init(nibName: nil, bundle: nil)
         // The browser exists before the view loads so the pane can answer questions early;
@@ -87,6 +89,10 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
             self.focus()
         }
         statusBar.isHidden = !env.preferences.showStatusBar
+        sortButton.update(sort)
+        sortButton.onChoose = { [weak self] key in self?.chooseSort(key) }
+        sortButton.onReverse = { [weak self] in self?.reverseSort() }
+        header.accessoryStack.insertArrangedSubview(sortButton, at: 0)
         view = root
         embed(browser)
         refreshChrome()
@@ -99,7 +105,12 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
         switch viewMode {
         case .list:
             let list = FileListViewController(directory: directory, options: options, preferences: env.preferences)
-            list.onSortChange = { [weak self] s in self?.sort = s }
+            list.onSortChange = { [weak self] s in
+                guard let self else { return }
+                self.sort = s
+                self.sortButton.update(s)
+                self.onChange?(self)
+            }
             return list
         case .columns:
             return ColumnBrowserViewController(directory: directory, options: options, preferences: env.preferences)
@@ -175,6 +186,26 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
     func reload() {
         browser.reload(options: env.preferences.listingOptions(sort: sort, filter: filter))
         refreshChrome()
+    }
+
+    // MARK: Sorting
+
+    /// Sort this pane by `key`; the current key again reverses the order.
+    func chooseSort(_ key: SortKey) {
+        setSort(sort.choosing(key))
+    }
+
+    func reverseSort() {
+        var s = sort
+        s.ascending.toggle()
+        setSort(s)
+    }
+
+    func setSort(_ newSort: FileSort) {
+        sort = newSort
+        reload()
+        sortButton.update(sort)
+        onChange?(self)
     }
 
     // MARK: Path editing and filter
@@ -302,6 +333,12 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
         case .columnsView: setViewMode(.columns)
         case .goToPath: beginPathEditing()
         case .filter: beginFilter()
+        case .sortByName: chooseSort(.name)
+        case .sortByKind: chooseSort(.kind)
+        case .sortByModified: chooseSort(.modified)
+        case .sortByCreated: chooseSort(.created)
+        case .sortBySize: chooseSort(.size)
+        case .reverseSort: reverseSort()
         default: return performFileCommand(id)
         }
         return true

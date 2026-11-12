@@ -16,12 +16,12 @@ final class PaneGroupViewController: NSViewController, NSSplitViewDelegate {
     private let splitView = NSSplitView()
     private var didInitialLayout = false
 
-    init(directories: [URL], viewModes: [ViewMode], env: AppEnvironment) {
+    init(directories: [URL], viewModes: [ViewMode], sorts: [FileSort] = [], env: AppEnvironment) {
         self.env = env
         super.init(nibName: nil, bundle: nil)
         for (i, dir) in directories.enumerated() {
             let mode = i < viewModes.count ? viewModes[i] : env.preferences.defaultViewMode
-            panes.append(makePane(directory: dir, mode: mode))
+            panes.append(makePane(directory: dir, mode: mode, sort: i < sorts.count ? sorts[i] : FileSort()))
         }
     }
 
@@ -48,8 +48,8 @@ final class PaneGroupViewController: NSViewController, NSSplitViewDelegate {
         }
     }
 
-    private func makePane(directory: URL, mode: ViewMode) -> PaneViewController {
-        let pane = PaneViewController(directory: directory, viewMode: mode, env: env)
+    private func makePane(directory: URL, mode: ViewMode, sort: FileSort = FileSort()) -> PaneViewController {
+        let pane = PaneViewController(directory: directory, viewMode: mode, sort: sort, env: env)
         pane.dispatcher = dispatcher
         pane.onActivate = { [weak self] p in self?.activate(p, focus: false) }
         pane.onChange = { [weak self] p in self?.onPaneChange?(p) }
@@ -177,7 +177,7 @@ final class PaneGroupViewController: NSViewController, NSSplitViewDelegate {
 
     func addPane() {
         guard panes.count < 4 else { return }
-        let pane = makePane(directory: activePane.currentDirectory, mode: activePane.viewMode)
+        let pane = makePane(directory: activePane.currentDirectory, mode: activePane.viewMode, sort: activePane.sort)
         panes.append(pane)
         addChild(pane)
         splitView.addArrangedSubview(pane.view)

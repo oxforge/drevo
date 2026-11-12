@@ -103,6 +103,12 @@ public extension CommandID {
     static let toggleKeyHints = CommandID("view.toggleKeyHints")
     static let toggleCommandLine = CommandID("view.toggleCommandLine")
     static let commandPalette = CommandID("view.commandPalette")
+    static let sortByName = CommandID("view.sortByName")
+    static let sortByKind = CommandID("view.sortByKind")
+    static let sortByModified = CommandID("view.sortByModified")
+    static let sortByCreated = CommandID("view.sortByCreated")
+    static let sortBySize = CommandID("view.sortBySize")
+    static let reverseSort = CommandID("view.reverseSort")
     // Shell
     static let openTerminal = CommandID("shell.openTerminal")
     static let runCommand = CommandID("shell.runCommand")
@@ -176,6 +182,13 @@ public enum CommandRegistry {
         CommandSpec(.toggleKeyHints, "Show Key Hints", .view),
         CommandSpec(.toggleCommandLine, "Show Command Line", .view),
         CommandSpec(.commandPalette, "Command Palette…", .view, keys: ["shift+cmd+p"], help: "Search every command"),
+        // Sort — Finder's ⌃⌥⌘ numbers; choosing the current one again reverses it.
+        CommandSpec(.sortByName, "Sort by Name", .view, keys: ["ctrl+opt+cmd+1"]),
+        CommandSpec(.sortByKind, "Sort by Kind", .view, keys: ["ctrl+opt+cmd+2"], help: "Group files by type"),
+        CommandSpec(.sortByModified, "Sort by Date Modified", .view, keys: ["ctrl+opt+cmd+5"], help: "Newest first"),
+        CommandSpec(.sortByCreated, "Sort by Date Created", .view, help: "Newest first"),
+        CommandSpec(.sortBySize, "Sort by Size", .view, keys: ["ctrl+opt+cmd+6"], help: "Largest first"),
+        CommandSpec(.reverseSort, "Reverse Sort Order", .view),
         // Shell
         CommandSpec(.openTerminal, "Open in Terminal", .shell, keys: ["opt+cmd+t"], help: "Open the terminal app in this folder"),
         CommandSpec(.runCommand, "Run Shell Command…", .shell, keys: ["!", "opt+cmd+r"], help: "Run a command in this folder with your shell"),

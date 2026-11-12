@@ -25,6 +25,12 @@ extension PaneViewController {
             menu.addItem(.separator())
             add([.openTerminal, .runCommand, .copyPath, .getInfo])
             menu.addItem(.separator())
+            let sortItem = menu.addItem(withTitle: "Sort By", action: nil, keyEquivalent: "")
+            let sortMenu = NSMenu()
+            for item in SortButton.menuItems(for: sort, target: self, choose: #selector(contextSortChosen(_:)), reverse: #selector(contextSortDirection(_:))) {
+                sortMenu.addItem(item)
+            }
+            sortItem.submenu = sortMenu
             add([.toggleHidden, .listView, .columnsView])
             return menu
         }
@@ -49,6 +55,16 @@ extension PaneViewController {
         menu.addItem(.separator())
         add([.moveToTrash])
         return menu
+    }
+
+    @objc private func contextSortChosen(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let key = SortKey(rawValue: raw), key != sort.key else { return }
+        chooseSort(key)
+    }
+
+    @objc private func contextSortDirection(_ sender: NSMenuItem) {
+        guard let ascending = sender.representedObject as? Bool, ascending != sort.ascending else { return }
+        reverseSort()
     }
 
     // MARK: Open With

@@ -105,3 +105,28 @@ import Testing
         #expect(fast.first { $0.name == "a.txt" }?.kind.isEmpty == false)
     }
 }
+
+@Suite struct SortChoiceTests {
+    @Test func choosingTheSameKeyReversesANewKeyStartsNaturally() {
+        let byName = FileSort()
+        #expect(byName.choosing(.name).ascending == false)
+        let byDate = byName.choosing(.modified)
+        #expect(byDate.key == .modified && byDate.ascending == false, "dates start newest first")
+        #expect(byDate.choosing(.size).ascending == false, "sizes start largest first")
+        #expect(byDate.choosing(.kind).ascending == true)
+    }
+
+    @Test func sortsByCreationDate() throws {
+        let tmp = TempDir()
+        let old = tmp.file("old.txt")
+        let new = tmp.file("new.txt")
+        // Creation date: set through the URL resource API.
+        var v1 = URLResourceValues(); v1.creationDate = Date(timeIntervalSince1970: 1000)
+        var v2 = URLResourceValues(); v2.creationDate = Date(timeIntervalSince1970: 2000)
+        var o = old, n = new
+        try o.setResourceValues(v1)
+        try n.setResourceValues(v2)
+        let opts = ListingOptions(sort: FileSort(key: .created, ascending: false, foldersFirst: true))
+        #expect(try DirectoryListing.load(tmp.url, options: opts).map(\.name) == ["new.txt", "old.txt"])
+    }
+}
