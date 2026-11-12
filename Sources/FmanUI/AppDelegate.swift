@@ -27,8 +27,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         })
 
-        let dirs = initialDirectories()
-        let wc = openWindow(directories: dirs)
+        let wc: MainWindowController
+        if options.openPaths.isEmpty, env.preferences.restoreState,
+           let saved = WindowState.decode(env.preferences.savedWindowState)?.validated() {
+            wc = openWindow(directories: saved.directories, viewModes: saved.viewModes)
+            wc.paneGroup.activate(index: saved.activeIndex)
+        } else {
+            wc = openWindow(directories: initialDirectories())
+        }
         NSApp.activate()
 
         if let path = options.snapshotPath {
@@ -53,8 +59,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @discardableResult
-    func openWindow(directories: [URL]) -> MainWindowController {
-        let wc = MainWindowController(env: env, directories: directories, autosave: !options.ephemeralSettings)
+    func openWindow(directories: [URL], viewModes: [ViewMode] = []) -> MainWindowController {
+        let wc = MainWindowController(env: env, directories: directories, viewModes: viewModes, autosave: !options.ephemeralSettings)
         windowControllers.append(wc)
         observers.append(NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: wc.window, queue: .main) { [weak self, weak wc] _ in
             MainActor.assumeIsolated { self?.windowControllers.removeAll { $0 === wc } }
@@ -64,8 +70,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func newWindow(_ sender: Any?) {
-        let current = windowControllers.last?.paneGroup.panes.map(\.currentDirectory)
-        openWindow(directories: current ?? initialDirectories())
+        if let group = windowControllers.last?.paneGroup {
+            openWindow(directories: group.panes.map(\.currentDirectory), viewModes: group.panes.map(\.viewMode))
+        } else {
+            openWindow(directories: initialDirectories())
+        }
     }
 
     /// Menu commands with no window open (only New Window works then).

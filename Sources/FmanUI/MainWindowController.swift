@@ -101,9 +101,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
         if !autosave || !window.setFrameUsingName("fman.main") { window.center() }
 
         group.setDispatcher(self)
-        group.onActivePaneChange = { [weak self] _ in self?.refreshWindowChrome() }
+        group.onActivePaneChange = { [weak self] _ in
+            self?.refreshWindowChrome()
+            self?.saveState()
+        }
         group.onPaneChange = { [weak self] p in
             if p === self?.paneGroup.activePane { self?.refreshWindowChrome() }
+            self?.saveState()
         }
         sidebar.onNavigate = { [weak self] url in
             guard let self else { return }
@@ -128,6 +132,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
     override func showWindow(_ sender: Any?) {
         super.showWindow(sender)
         paneGroup.activePane.focus()
+    }
+
+    /// Remembers panes for the next launch (the most recently changed window wins).
+    func saveState() {
+        env.preferences.savedWindowState = paneGroup.state.encoded()
     }
 
     // MARK: Commands
