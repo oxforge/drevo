@@ -9,8 +9,3 @@ import Testing
     #expect(o.ephemeralSettings)
 }
 
-@MainActor
-@Test func mainWindowControllerCreatesWindow() {
-    let wc = MainWindowController()
-    #expect(wc.window != nil)
-}

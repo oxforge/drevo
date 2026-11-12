@@ -5,7 +5,7 @@ public enum SortKey: String, Codable, CaseIterable, Sendable {
     case name, modified, size, kind
 }
 
-public struct SortOrder: Equatable, Codable, Sendable {
+public struct FileSort: Equatable, Codable, Sendable {
     public var key: SortKey
     public var ascending: Bool
     public var foldersFirst: Bool
@@ -19,11 +19,11 @@ public struct SortOrder: Equatable, Codable, Sendable {
 
 public struct ListingOptions: Equatable, Sendable {
     public var showHidden: Bool
-    public var sort: SortOrder
+    public var sort: FileSort
     /// Case-insensitive substring filter on the name; empty = no filter.
     public var filter: String
 
-    public init(showHidden: Bool = false, sort: SortOrder = SortOrder(), filter: String = "") {
+    public init(showHidden: Bool = false, sort: FileSort = FileSort(), filter: String = "") {
         self.showHidden = showHidden
         self.sort = sort
         self.filter = filter
@@ -52,7 +52,7 @@ public enum DirectoryListing {
         return sorted(result, by: options.sort)
     }
 
-    public static func sorted(_ items: [FileItem], by order: SortOrder) -> [FileItem] {
+    public static func sorted(_ items: [FileItem], by order: FileSort) -> [FileItem] {
         items.sorted { a, b in
             if order.foldersFirst, a.isContainer != b.isContainer {
                 return a.isContainer
