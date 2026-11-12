@@ -75,6 +75,7 @@ public struct KeyMap: Equatable, Sendable {
         }
         var problems: [OverrideProblem] = []
         for (rawID, value) in dict.sorted(by: { $0.key < $1.key }) {
+            if rawID.hasPrefix("_") { continue } // comments: "_comment": "…"
             let id = CommandID(rawID)
             guard CommandRegistry.byID[id] != nil else {
                 problems.append(OverrideProblem(command: rawID, message: "unknown command"))
@@ -101,7 +102,16 @@ public struct KeyMap: Equatable, Sendable {
         return problems
     }
 
-    /// A commented starter file listing every command with its current keys.
+    /// The starter keybindings.json: no overrides, just a pointer to the defaults.
+    public static let starterJSON = """
+    {
+      "_comment": "Override shortcuts here; keybindings.defaults.json lists every command id with its default keys. A value is one key ('f2'), a list (['f2', 'cmd+r']) or null to unbind. Keys: cmd, shift, opt, ctrl + a letter, symbol, f1-f20, return, tab, space, escape, backspace, up, down, left, right. Changes apply when you switch back to fman.",
+      "_example_vim_style": { "nav.levelUp": ["left", "h"], "nav.levelDown": ["right", "l"] }
+    }
+
+    """
+
+    /// Every command with its current keys (the reference file next to keybindings.json).
     public func templateJSON() -> String {
         var lines = ["{"]
         let specs = CommandRegistry.all

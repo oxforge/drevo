@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         default: break
         }
         env = options.ephemeralSettings ? .ephemeral() : AppEnvironment(preferences: .shared)
+        keyBindingsStamp = Self.modificationDate(KeyMap.userOverridesURL)
         NSApp.mainMenu = MainMenu.build(keyMap: env.keyMap)
         observers.append(NotificationCenter.default.addObserver(forName: AppEnvironment.keyMapDidChange, object: env, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -90,9 +91,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func showSettings(_ sender: Any?) {}
 
-    @objc func showShortcuts(_ sender: Any?) {}
+    @objc func showShortcuts(_ sender: Any?) {
+        ShortcutsWindow.show(keyMap: env.keyMap)
+    }
 
-    @objc func editKeyBindings(_ sender: Any?) {}
+    /// Writes keybindings.json (if missing) and the defaults reference, then opens it.
+    @objc func editKeyBindings(_ sender: Any?) {
+        let url = KeyMap.userOverridesURL
+        let dir = url.deletingLastPathComponent()
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try KeyMap().templateJSON().write(to: dir.appendingPathComponent("keybindings.defaults.json"), atomically: true, encoding: .utf8)
+            if !FileManager.default.fileExists(atPath: url.path) {
+                try KeyMap.starterJSON.write(to: url, atomically: true, encoding: .utf8)
+            }
+            let editor = env.preferences.editorAppPath.map { URL(fileURLWithPath: $0) }
+                ?? NSWorkspace.shared.urlForApplication(toOpen: .plainText)
+                ?? URL(fileURLWithPath: "/System/Applications/TextEdit.app")
+            env.opener.open([url], withApplicationAt: editor)
+            keyBindingsStamp = Self.modificationDate(url)
+        } catch {
+            env.operations.prompts.showError("Couldn’t create keybindings.json.", detail: error.localizedDescription, in: NSApp.keyWindow)
+        }
+    }
+
+    private var keyBindingsStamp: Date?
+
+    private static func modificationDate(_ url: URL) -> Date? {
+        (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+    }
+
+    /// Picks up keybindings.json edits when the user comes back to fman.
+    func applicationDidBecomeActive(_ notification: Notification) {
+        guard !options.ephemeralSettings else { return }
+        let stamp = Self.modificationDate(KeyMap.userOverridesURL)
+        guard stamp != keyBindingsStamp else { return }
+        keyBindingsStamp = stamp
+        env.reloadKeyMap()
+        var problems = env.keyMapProblems
+        let conflicts = env.keyMap.conflicts.map { "\($0.key) is bound to \($0.value.map(\.rawValue).joined(separator: " and "))" }
+        problems += conflicts
+        if !problems.isEmpty {
+            env.operations.prompts.showError("Some key bindings weren’t applied.", detail: problems.joined(separator: "\n"), in: NSApp.keyWindow)
+        }
+    }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 

@@ -67,3 +67,10 @@ import Testing
     #expect(problems.isEmpty)
     #expect(copy.bindings == map.bindings)
 }
+
+@Test func starterFileHasNoEffectAndNoProblems() throws {
+    var map = KeyMap()
+    let problems = try map.applyOverrides(json: Data(KeyMap.starterJSON.utf8))
+    #expect(problems.isEmpty)
+    #expect(map.bindings == KeyMap().bindings)
+}

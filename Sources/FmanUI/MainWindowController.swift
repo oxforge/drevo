@@ -89,6 +89,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
     var paneGroup: PaneGroupViewController { workspace.paneGroup }
     let commandBar: CommandBar
     let shell: ShellSession
+    let keyHints = KeyHintBar()
     private var sidebarItem: NSSplitViewItem!
     private var observers: [NSObjectProtocol] = []
     private var watcher: DirectoryWatcher?
@@ -166,7 +167,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
         _ = workspace.view
         workspace.addBottomBar(OperationsBar(operations: env.operations))
         workspace.addBottomBar(commandBar)
+        workspace.addBottomBar(keyHints)
         commandBar.isHidden = !env.preferences.showCommandLine
+        keyHints.isHidden = !env.preferences.showKeyHints
+        keyHints.reload(keyMap: env.keyMap)
+        keyHints.onCommand = { [weak self] id in
+            self?.paneGroup.activePane.focus()
+            self?.perform(id)
+        }
+        observers.append(NotificationCenter.default.addObserver(forName: AppEnvironment.keyMapDidChange, object: env, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.keyHints.reload(keyMap: self.env.keyMap)
+            }
+        })
         wireShell()
         startWatching()
         refreshWindowChrome()
@@ -285,6 +299,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
             workspace.setConsoleVisible(!workspace.isConsoleVisible)
             if !workspace.isConsoleVisible { paneGroup.activePane.focus() }
         case .stopCommand: shell.stop()
+        case .commandPalette: CommandPalette.show(for: self)
         case .addToSidebar:
             let pane = paneGroup.activePane
             let folders = pane.selectedItems.filter(\.isContainer).map(\.url)
@@ -312,7 +327,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
              .edit, .showPackageContents, .revealInFinder, .getInfo:
             return pane.canPerformFileCommand(id)
         case .quickLook: return !pane.selectedItems.isEmpty
-        case .openTerminal, .runCommand, .toggleConsole, .goToPath, .filter: return true
+        case .openTerminal, .runCommand, .toggleConsole, .goToPath, .filter, .commandPalette: return true
         case .stopCommand: return shell.isRunning
         case .runInTerminal: return commandBar.hasFocus
         case .enclosingFolder, .levelUp, .levelDown, .goHome, .goDesktop, .goDocuments, .goDownloads,
@@ -364,6 +379,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
             break
         case "favorites":
             sidebar.reloadSections()
+        case "showKeyHints":
+            keyHints.isHidden = !env.preferences.showKeyHints
         case "showCommandLine":
             commandBar.isHidden = !env.preferences.showCommandLine
             if commandBar.isHidden, commandBar.hasFocus { paneGroup.activePane.focus() }
