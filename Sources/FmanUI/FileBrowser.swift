@@ -39,8 +39,12 @@ protocol FileBrowser: AnyObject {
     var visibleItems: [FileItem] { get }
     /// Show `directory`; select `selecting` if it is one of its entries.
     func display(_ directory: URL, selecting: URL?)
-    /// Re-read from disk with new options, keeping selection and scroll.
-    func reload(options: ListingOptions)
+    /// Re-read from disk with new options, keeping selection and scroll. When none of the
+    /// selected items are left, the row that took their place is selected instead.
+    /// `changedFolders` (paths as `DirectoryWatcher.normalize` gives them) names the
+    /// folders known to have changed, so a view that shows several can skip the rest;
+    /// nil re-reads everything.
+    func reload(options: ListingOptions, changedFolders: Set<String>?)
     func select(_ urls: [URL])
     func focus()
     var hasFocus: Bool { get }
@@ -56,6 +60,11 @@ protocol FileBrowser: AnyObject {
 }
 
 extension FileBrowser {
+    /// Re-read everything on screen.
+    func reload(options: ListingOptions) {
+        reload(options: options, changedFolders: nil)
+    }
+
     /// Starts in-place renaming of `url` in the current directory.
     @discardableResult
     func beginRename(_ url: URL, completion: @escaping (String?) -> Void) -> Bool {

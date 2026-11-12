@@ -79,7 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let count = env.preferences.paneCount
         var dirs = options.openPaths.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
         let home = FileManager.default.homeDirectoryForCurrentUser
-        while dirs.count < max(count, options.openPaths.isEmpty ? count : dirs.count) { dirs.append(dirs.last ?? home) }
+        while dirs.count < count { dirs.append(dirs.last ?? home) }
         return dirs
     }
 
@@ -88,6 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let wc = MainWindowController(env: env, directories: directories, viewModes: viewModes, sorts: sorts, autosave: !options.ephemeralSettings)
         windowControllers.append(wc)
         observers.append(NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: wc.window, queue: .main) { [weak self, weak wc] _ in
+            // The window controller stops its own command when it closes.
             MainActor.assumeIsolated { self?.windowControllers.removeAll { $0 === wc } }
         })
         wc.showWindow(nil)
@@ -124,10 +125,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let first = urls.first else { return }
         let wc = frontWindowController ?? openWindow(directories: [first.deletingLastPathComponent(), first.deletingLastPathComponent()])
         let pane = wc.paneGroup.activePane
-        if first.isDirectoryOnDisk, (try? FileItem(url: first))?.isContainer == true {
-            pane.navigate(to: first)
-        } else {
-            pane.navigate(to: first)
+        let isFolder = first.isDirectoryOnDisk && (try? FileItem(url: first))?.isContainer == true
+        pane.navigate(to: first)
+        if !isFolder {
             let siblings = urls.filter { $0.deletingLastPathComponent() == first.deletingLastPathComponent() }
             if siblings.count > 1 { pane.browser.select(siblings) }
         }
@@ -209,25 +209,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     /// Quitting mid-copy would leave half-copied items under their final names: ask, then
-    /// stop the transfers and wait for their cleanup before quitting. Running shell
-    /// commands are interrupted so they don't outlive the app.
+    /// stop the jobs (transfers, archive expansions) and wait for their cleanup before quitting. Running shell
+    /// commands are ended once quitting is certain, so they don't outlive the app; "Keep
+    /// Running" leaves them alone.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        windowControllers.forEach { $0.shell.stop() }
         let ops = env.operations
-        guard !ops.jobs.isEmpty else { return .terminateNow }
-        let alert = NSAlert()
-        alert.messageText = ops.jobs.count == 1 ? "A copy or move is still running." : "\(ops.jobs.count) copies or moves are still running."
-        alert.informativeText = "Quitting stops them; items that weren’t finished are removed from the destination."
-        alert.addButton(withTitle: "Stop and Quit")
-        alert.addButton(withTitle: "Keep Running")
-        guard alert.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
+        guard !ops.jobs.isEmpty else {
+            endShellCommands()
+            return .terminateNow
+        }
+        guard confirmQuit(ops.jobs.count) else { return .terminateCancel }
+        windowControllers.forEach { $0.shell.stop() } // Ctrl-C now; they get the cleanup time to exit
         ops.cancelAll()
         quitObserver = NotificationCenter.default.addObserver(forName: OperationsCenter.jobsDidChange, object: ops, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, self.env.operations.jobs.isEmpty else { return }
                 if let token = self.quitObserver { NotificationCenter.default.removeObserver(token) }
                 self.quitObserver = nil
-                NSApp.reply(toApplicationShouldTerminate: true)
+                self.endShellCommands()
+                self.replyToTerminate(true)
             }
         }
         return .terminateLater
@@ -235,6 +235,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Waits for cancelled transfers to finish cleaning up before quitting.
     private var quitObserver: NSObjectProtocol?
+
+    /// "Stop and Quit" (true) or "Keep Running" for `jobCount` unfinished jobs (copies,
+    /// moves, archives being expanded). Tests replace the alert with a scripted answer.
+    var confirmQuit: (_ jobCount: Int) -> Bool = { jobCount in
+        let alert = NSAlert()
+        alert.messageText = AppDelegate.quitQuestion(jobCount: jobCount)
+        alert.informativeText = "Quitting stops \(jobCount == 1 ? "it" : "them"); items that weren’t finished are removed."
+        alert.addButton(withTitle: "Stop and Quit")
+        alert.addButton(withTitle: "Keep Running")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    /// The quit alert's headline; it fits whatever the jobs are doing.
+    nonisolated static func quitQuestion(jobCount: Int) -> String {
+        jobCount == 1 ? "A file operation is still running." : "\(jobCount) file operations are still running."
+    }
+
+    /// The answer after `.terminateLater`. Tests record it instead of quitting.
+    var replyToTerminate: (Bool) -> Void = { NSApp.reply(toApplicationShouldTerminate: $0) }
+
+    /// Ends every window's command for certain: the app is about to exit, so nothing
+    /// could follow up on a command that ignores Ctrl-C.
+    private func endShellCommands() {
+        windowControllers.forEach { $0.shell.terminate() }
+    }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag { newWindow(nil) }

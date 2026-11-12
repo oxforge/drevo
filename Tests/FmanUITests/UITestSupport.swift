@@ -68,6 +68,20 @@ final class ScriptedPrompts: UserPrompts {
     func showError(_ message: String, detail: String?, in window: NSWindow?) { errors.append(message + " " + (detail ?? "")) }
 }
 
+/// The environment a scratch zsh starts from: the few variables it needs, not a copy of
+/// this process's environment. The setup (and the snapshot captured from it) hangs off
+/// every window, and a failed expectation on a window or pane prints all of it into the
+/// test log — where the full environment could put API keys and tokens.
+func scratchShellEnvironment(zdotdir: URL) -> [String: String] {
+    let inherited = ProcessInfo.processInfo.environment
+    var env: [String: String] = [:]
+    for key in ["PATH", "HOME", "TMPDIR", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE"] {
+        env[key] = inherited[key]
+    }
+    env["ZDOTDIR"] = zdotdir.path
+    return env
+}
+
 /// An environment that never touches the real Trash, clipboard or apps.
 @MainActor
 func testEnvironment(trash: URL, prompts: ScriptedPrompts? = nil, opener: RecordingOpener? = nil) -> AppEnvironment {
@@ -80,9 +94,7 @@ func testEnvironment(trash: URL, prompts: ScriptedPrompts? = nil, opener: Record
     try? FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
     try? "alias ll='echo SNAPSHOT-ALIAS'\nexport FMAN_TEST_SETUP=loaded\n".write(to: scratch.appendingPathComponent(".zshrc"), atomically: true, encoding: .utf8)
     let setup = ShellSetup(shell: "/bin/zsh", definitionsFile: scratch.appendingPathComponent("defs.sh"))
-    var captureEnv = ProcessInfo.processInfo.environment
-    captureEnv["ZDOTDIR"] = scratch.path
-    setup.captureEnvironment = captureEnv
+    setup.captureEnvironment = scratchShellEnvironment(zdotdir: scratch)
     let env = AppEnvironment.ephemeral(opener: opener, operations: ops, shellSetup: setup)
     env.pasteboard = NSPasteboard(name: NSPasteboard.Name("fman.tests.\(UUID().uuidString)"))
     return env

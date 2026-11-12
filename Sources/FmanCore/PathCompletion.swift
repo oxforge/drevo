@@ -13,9 +13,15 @@ public enum PathCompletion {
     }
 
     /// Folder suggestions for `input` (folders only, since the path bar navigates).
-    /// Results keep the user's "~" form and end with "/".
+    /// Results keep the user's "~" form and end with "/". Spaces around the input are
+    /// ignored, as `expand` ignores them; a bare "~" lists the folders in Home as "~/…".
     public static func candidates(for input: String, relativeTo base: URL? = nil, showHidden: Bool = false,
                                   home: String = NSHomeDirectory(), fileManager: FileManager = .default) -> [String] {
+        // Work on the text `expand` sees, so the typed prefix below is cut from the same string.
+        var input = input.trimmingCharacters(in: .whitespaces)
+        // "~" expands to Home itself, whose last component would be matched against Home's
+        // siblings and returned without the "~"; the user means the folders inside it.
+        if input == "~" { input = "~/" }
         let expanded = expand(input, relativeTo: base, home: home)
         let dir: String
         let prefix: String
@@ -53,6 +59,7 @@ public enum PathCompletion {
             common = Array(common.prefix(n))
         }
         let result = String(common)
-        return result.count > input.count ? result : nil
+        let typed = input.trimmingCharacters(in: .whitespaces)
+        return result.count > typed.count ? result : nil
     }
 }

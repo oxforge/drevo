@@ -35,8 +35,50 @@ import Testing
     #expect(map.keys(for: .rename) == [.named(.f9)])
     #expect(map.keys(for: .levelUp) == [.named(.left), .char("h")])
     #expect(map.keys(for: .swapPanes).isEmpty)
-    #expect(map.keys(for: .copyToOtherPane).isEmpty, "bad key leaves the command unbound rather than half-applied")
+    #expect(map.keys(for: .copyToOtherPane) == KeyMap().keys(for: .copyToOtherPane), "a key that can't be read leaves the command as it was")
     #expect(problems.map(\.command).sorted() == ["file.copyToOther", "nope"])
+    #expect(map.overridden == [.rename, .levelUp, .swapPanes])
+}
+
+@Test func typoInOverrideKeepsTheCurrentKeys() throws {
+    var map = KeyMap()
+    let defaults = map.keys(for: .rename)
+    #expect(!defaults.isEmpty)
+    let problems = try map.applyOverrides(json: Data(#"{ "file.rename": "f22" }"#.utf8))
+    #expect(map.keys(for: .rename) == defaults)
+    #expect(!map.overridden.contains(.rename))
+    #expect(problems == [KeyMap.OverrideProblem(command: "file.rename", message: #"can't read key "f22""#)])
+}
+
+@Test func listOfOnlyUnreadableKeysKeepsTheCurrentKeys() throws {
+    var map = KeyMap()
+    map.applyReturnRenames()
+    let current = map.keys(for: .rename)
+    #expect(current.first == .named(.return), "the current keys, not the registry defaults")
+    let problems = try map.applyOverrides(json: Data(#"{ "file.rename": ["f22", "cmd+banana"], "pane.swap": [7] }"#.utf8))
+    #expect(map.keys(for: .rename) == current)
+    #expect(map.keys(for: .swapPanes) == KeyMap().keys(for: .swapPanes), "a list without any key string is a mistake, not an unbind")
+    #expect(map.overridden.isEmpty)
+    #expect(problems.map(\.command) == ["file.rename", "file.rename", "pane.swap"])
+}
+
+@Test func nullAndEmptyListStillUnbind() throws {
+    var map = KeyMap()
+    #expect(!map.keys(for: .rename).isEmpty && !map.keys(for: .swapPanes).isEmpty)
+    let problems = try map.applyOverrides(json: Data(#"{ "file.rename": [], "pane.swap": null }"#.utf8))
+    #expect(map.keys(for: .rename).isEmpty)
+    #expect(map.keys(for: .swapPanes).isEmpty)
+    #expect(map.overridden == [.rename, .swapPanes])
+    #expect(problems.isEmpty)
+}
+
+@Test func partlyReadableListAppliesWhatParsedAndReportsTheRest() throws {
+    var map = KeyMap()
+    let problems = try map.applyOverrides(json: Data(#"{ "file.rename": ["f22", "f9", 7] }"#.utf8))
+    #expect(map.keys(for: .rename) == [.named(.f9)])
+    #expect(map.overridden == [.rename])
+    #expect(problems.map(\.command) == ["file.rename", "file.rename"])
+    #expect(problems.first?.message == #"can't read key "f22""#)
 }
 
 @Test func overridesMustBeAnObject() {

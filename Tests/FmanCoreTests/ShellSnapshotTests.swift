@@ -6,6 +6,18 @@ import Testing
 @Suite struct ShellSnapshotTests {
     let tmp = TempDir()
 
+    /// The few variables a scratch shell needs, not a copy of this process's
+    /// environment: a failed expectation prints the snapshot, environment included, into
+    /// the test log, and the full one may hold API keys.
+    static var baseEnvironment: [String: String] {
+        let inherited = ProcessInfo.processInfo.environment
+        var env: [String: String] = [:]
+        for key in ["PATH", "HOME", "TMPDIR", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE"] {
+            env[key] = inherited[key]
+        }
+        return env
+    }
+
     func run(_ snapshot: ShellSnapshot, _ command: String) throws -> (out: String, status: Int32?, seconds: Double) {
         let defs = tmp.url.appendingPathComponent("defs.sh")
         try snapshot.writeDefinitions(to: defs)
@@ -31,7 +43,7 @@ import Testing
         export FMAN_TEST_VAR=from-zshrc
         export PATH="/opt/fman-test/bin:$PATH"
         """.write(to: dot.appendingPathComponent(".zshrc"), atomically: true, encoding: .utf8)
-        var env = ProcessInfo.processInfo.environment
+        var env = Self.baseEnvironment
         env["ZDOTDIR"] = dot.path
         return try ShellSnapshot.capture(shell: "/bin/zsh", environment: env)
     }
@@ -66,7 +78,7 @@ import Testing
         bgreet() { echo "bash hi $1"; }
         export FMAN_TEST_VAR=from-bash
         """.write(to: home.appendingPathComponent(".bash_profile"), atomically: true, encoding: .utf8)
-        var env = ProcessInfo.processInfo.environment
+        var env = Self.baseEnvironment
         env["HOME"] = home.path
         let snap = try ShellSnapshot.capture(shell: "/bin/bash", environment: env)
         let r = try run(snap, "ll; bgreet x; echo $FMAN_TEST_VAR")

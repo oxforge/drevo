@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import Testing
 @testable import FmanCore
@@ -69,6 +70,22 @@ import Testing
         let view = NSHostingView(rootView: SettingsView(model: model))
         view.layoutSubtreeIfNeeded()
         #expect(view.fittingSize.width > 400)
+    }
+
+    @Test func shellStatusFollowsTheSetupLoading() {
+        let env = testEnvironment(trash: fx.url.appendingPathComponent(".T"))
+        let model = SettingsModel(env: env)
+        var changes = 0
+        let watching = model.objectWillChange.sink { changes += 1 }
+        defer { watching.cancel() }
+        #expect(model.shellSetupStatus == "Loads the first time you use the command line.")
+        env.shellSetup.reload()
+        #expect(changes == 1, "the Shell tab is told that loading started")
+        #expect(model.shellSetupStatus == "Loading…")
+        let end = Date().addingTimeInterval(15)
+        while env.shellSetup.isLoading, Date() < end { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+        #expect(changes == 2, "…and that it ended, so “Loading…” doesn't stay")
+        #expect(model.shellSetupStatus.hasPrefix("Loaded in"), "\(model.shellSetupStatus)")
     }
 
     @Test func returnRenamesRebindsKeys() {

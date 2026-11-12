@@ -37,6 +37,10 @@ final class InlineRenamer: NSObject, NSTextFieldDelegate {
 
     static var isEditing: Bool { active != nil }
 
+    /// Posted when a rename ends, committed or cancelled, after its completion ran.
+    /// There is one editor for the whole app, so reloads everywhere wait for it.
+    static let didEndEditing = Notification.Name("fman.renameDidEnd")
+
     private func start(selecting base: String) {
         label.stringValue = originalName
         label.isEditable = true
@@ -80,5 +84,6 @@ final class InlineRenamer: NSObject, NSTextFieldDelegate {
         if Self.active === self { Self.active = nil }
         if table.window?.firstResponder !== table { table.window?.makeFirstResponder(table) }
         completion(commit && text != originalName ? text : nil)
+        NotificationCenter.default.post(name: Self.didEndEditing, object: nil)
     }
 }

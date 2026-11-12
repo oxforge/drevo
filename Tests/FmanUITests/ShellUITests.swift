@@ -158,6 +158,27 @@ import Testing
         #expect(console.transcript.components(separatedBy: "SNAPSHOT-ALIAS").count - 1 == 2)
     }
 
+    /// A failed expectation on a window prints everything reachable from it, so the test
+    /// shell setup must not hold this process's environment (it may contain API keys).
+    /// The checks compare counts and names only; no value can end up in the log.
+    @Test func theTestShellSetupDoesNotCarryTheProcessEnvironment() {
+        let marker = "FMAN_TEST_NOT_FOR_THE_LOG"
+        setenv(marker, "1", 1)
+        defer { unsetenv(marker) }
+        let wc = window()
+        let setup = wc.env.shellSetup
+        let given = Set((setup.captureEnvironment ?? ProcessInfo.processInfo.environment).keys)
+        let allowed: Set<String> = ["PATH", "HOME", "TMPDIR", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "ZDOTDIR"]
+        #expect(given.subtracting(allowed).isEmpty, "only what a scratch zsh needs")
+        #expect(given.contains("ZDOTDIR") && given.contains("PATH"))
+
+        #expect(runAndWait(wc, "ll"))
+        let captured = Set((setup.snapshot?.environment ?? [:]).keys)
+        #expect(!captured.isEmpty, "the setup was loaded")
+        let leaked = captured.contains(marker)
+        #expect(!leaked, "the captured setup has nothing of the process environment either")
+    }
+
     @Test func focusingTheCommandLineStartsLoading() {
         let wc = window()
         #expect(wc.env.shellSetup.snapshot == nil)
@@ -167,12 +188,20 @@ import Testing
         #expect(!wc.workspace.console.transcript.contains("Loading your shell setup"), "already loaded while typing")
     }
 
-    @Test func turningTheConfigOffUsesAPlainLoginShell() {
+    @Test func turningTheConfigOffUsesAPlainLoginShell() throws {
         let wc = window()
+        // zsh reads one .zprofile — $ZDOTDIR's if that is set, else the user's — and only as
+        // a login shell. Seeing the scratch one proves both: a login shell, and not one
+        // that ran the user's startup files.
+        let zdotdir = try #require(wc.env.shellSetup.captureEnvironment?["ZDOTDIR"])
+        try "export FMAN_TEST_PROFILE=scratch-profile\n"
+            .write(toFile: zdotdir + "/.zprofile", atomically: true, encoding: .utf8)
         wc.env.preferences.interactiveShell = false
-        #expect(runAndWait(wc, "ll 2>&1; echo done"))
-        #expect(wc.workspace.console.transcript.contains("done"))
-        #expect(!wc.workspace.console.transcript.contains("SNAPSHOT-ALIAS"))
+        #expect(runAndWait(wc, "ll 2>&1; echo profile=$FMAN_TEST_PROFILE; echo done"))
+        let transcript = wc.workspace.console.transcript
+        #expect(transcript.contains("done"))
+        #expect(transcript.contains("profile=scratch-profile\n"), "a login shell reading the scratch config")
+        #expect(!transcript.contains("SNAPSHOT-ALIAS"), "not interactive: .zshrc is not read")
         #expect(wc.env.shellSetup.snapshot == nil, "nothing loaded")
     }
 }

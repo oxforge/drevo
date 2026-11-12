@@ -12,8 +12,6 @@ public struct FileItem: Hashable, Sendable {
     public let isPackage: Bool
     public let isHidden: Bool
     public let isSymbolicLink: Bool
-    public let isAlias: Bool
-    public let isVolume: Bool
     /// File size in bytes; nil for folders.
     public let size: Int64?
     public let modified: Date?
@@ -22,15 +20,15 @@ public struct FileItem: Hashable, Sendable {
     public let contentType: UTType?
 
     public static let resourceKeys: [URLResourceKey] = [
-        .isDirectoryKey, .isPackageKey, .isHiddenKey, .isSymbolicLinkKey, .isAliasFileKey,
-        .isVolumeKey, .fileSizeKey, .contentModificationDateKey, .creationDateKey,
-        .localizedTypeDescriptionKey, .contentTypeKey, .localizedNameKey,
+        .isDirectoryKey, .isPackageKey, .isHiddenKey, .isSymbolicLinkKey,
+        .fileSizeKey, .contentModificationDateKey, .creationDateKey,
+        .localizedTypeDescriptionKey, .contentTypeKey,
     ]
 
     public init(
         url: URL, name: String, isContainer: Bool, isDirectory: Bool, isPackage: Bool = false,
-        isHidden: Bool = false, isSymbolicLink: Bool = false, isAlias: Bool = false,
-        isVolume: Bool = false, size: Int64? = nil, modified: Date? = nil, created: Date? = nil,
+        isHidden: Bool = false, isSymbolicLink: Bool = false,
+        size: Int64? = nil, modified: Date? = nil, created: Date? = nil,
         kind: String = "", contentType: UTType? = nil
     ) {
         self.url = url
@@ -40,8 +38,6 @@ public struct FileItem: Hashable, Sendable {
         self.isPackage = isPackage
         self.isHidden = isHidden
         self.isSymbolicLink = isSymbolicLink
-        self.isAlias = isAlias
-        self.isVolume = isVolume
         self.size = size
         self.modified = modified
         self.created = created
@@ -69,8 +65,6 @@ public struct FileItem: Hashable, Sendable {
             isPackage: isPackage,
             isHidden: values.isHidden ?? url.lastPathComponent.hasPrefix("."),
             isSymbolicLink: isSymlink,
-            isAlias: (values.isAliasFile ?? false) && !isSymlink,
-            isVolume: values.isVolume ?? false,
             size: isDir ? nil : values.fileSize.map(Int64.init),
             modified: values.contentModificationDate,
             created: values.creationDate,
@@ -81,7 +75,7 @@ public struct FileItem: Hashable, Sendable {
 
     /// Fast path for listings: built from lstat (and stat for symlinks), with kind and
     /// type looked up once per extension.
-    init(path: String, name: String, stat st: stat, parentDevice: dev_t?) {
+    init(path: String, name: String, stat st: stat) {
         let url = URL(fileURLWithPath: path)
         let type = st.st_mode & S_IFMT
         let isSymlink = type == S_IFLNK
@@ -98,11 +92,10 @@ public struct FileItem: Hashable, Sendable {
         let contentType = KindCache.type(forExtension: ext, isDirectory: isDir)
         let isPackage = isDir && (contentType?.conforms(to: .package) ?? false)
         let hidden = name.hasPrefix(".") || (st.st_flags & UInt32(UF_HIDDEN)) != 0
-        let isVolume = isDir && !isSymlink && parentDevice != nil && st.st_dev != parentDevice
         let executable = !isDir && (target.st_mode & 0o111) != 0
         self.init(
             url: url, name: name, isContainer: isDir && !isPackage, isDirectory: isDir, isPackage: isPackage,
-            isHidden: hidden, isSymbolicLink: isSymlink, isAlias: false, isVolume: isVolume,
+            isHidden: hidden, isSymbolicLink: isSymlink,
             size: isDir ? nil : Int64(target.st_size),
             modified: Date(timespec: target.st_mtimespec), created: Date(timespec: target.st_birthtimespec),
             kind: KindCache.kind(forExtension: ext, type: contentType, isDirectory: isDir, isPackage: isPackage,

@@ -13,6 +13,18 @@ final class FilePreviewView: NSView {
     let titleLabel = NSTextField(wrappingLabelWithString: "")
     let subtitleLabel = NSTextField(labelWithString: "")
 
+    /// How long a summary must stay up before its folders are walked: extending a selection
+    /// with ⇧↓ replaces the preview on every key press.
+    static let measureDelay: TimeInterval = 0.15
+    /// Measures one folder off the main thread; asked to stop through its second argument.
+    /// Tests replace it.
+    var measureFolder: @Sendable (URL, () -> Bool) -> Int64 = { CopyEngine.measure($0, isCancelled: $1).bytes }
+    /// Stops the folder walk that is waiting to start or running; nil when there is none.
+    private(set) var measurement: CancellationToken?
+    /// False while "Calculating…" still has to be replaced by the measured total.
+    private var totalIsKnown = true
+    private var wasInWindow = false
+
     init(items: [FileItem], relativeDates: Bool) {
         precondition(!items.isEmpty)
         self.items = items
@@ -46,7 +58,7 @@ final class FilePreviewView: NSView {
                 [Self.key("Kinds"), Self.value(Self.kinds(items))],
                 [Self.key("Last modified"), Self.value(Formatting.date(items.compactMap(\.modified).max(), relative: relativeDates))],
             ])
-            measureTotalSize()
+            showTotalSize()
         }
         grid.column(at: 0).xPlacement = .trailing
         grid.rowSpacing = 4
@@ -96,20 +108,68 @@ final class FilePreviewView: NSView {
         return ordered.count > 2 ? "\(shown) +\(ordered.count - 2) more" : shown
     }
 
-    /// File sizes add up at once; folders are measured in the background.
-    private func measureTotalSize() {
-        let fileBytes = items.compactMap(\.size).reduce(0, +)
-        let folders = items.filter(\.isDirectory).map(\.url)
-        guard !folders.isEmpty else {
-            sizeLabel.stringValue = Formatting.size(fileBytes)
-            return
-        }
-        sizeLabel.stringValue = "Calculating…"
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            let folderBytes = folders.reduce(Int64(0)) { $0 + CopyEngine.measure($1).bytes }
-            onMainRunLoop { self?.sizeLabel.stringValue = Formatting.size(fileBytes + folderBytes) }
+    // MARK: Total size
+
+    /// File sizes add up at once; folders are measured in the background while the preview
+    /// is in a view (`startMeasuring`).
+    private func showTotalSize() {
+        if items.contains(where: \.isDirectory) {
+            totalIsKnown = false
+            sizeLabel.stringValue = "Calculating…"
+        } else {
+            sizeLabel.stringValue = Formatting.size(items.compactMap(\.size).reduce(0, +))
         }
     }
+
+    /// Walks the selected folders once the preview has been in a view for `measureDelay`.
+    private func startMeasuring() {
+        guard superview != nil, !totalIsKnown, measurement == nil else { return }
+        let token = CancellationToken()
+        measurement = token
+        let fileBytes = items.compactMap(\.size).reduce(0, +)
+        let folders = items.filter(\.isDirectory).map(\.url)
+        let measure = measureFolder
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + Self.measureDelay) { [weak self] in
+            var total = fileBytes
+            for folder in folders where !token.isCancelled {
+                total += measure(folder) { token.isCancelled }
+            }
+            guard !token.isCancelled else { return }
+            onMainRunLoop {
+                // Not the current walk any more if the preview was removed in the meantime.
+                guard let self, self.measurement === token else { return }
+                self.measurement = nil
+                self.totalIsKnown = true
+                self.sizeLabel.stringValue = Formatting.size(total)
+            }
+        }
+    }
+
+    private func stopMeasuring() {
+        measurement?.cancel()
+        measurement = nil
+    }
+
+    // A preview that is replaced, or whose pane goes away, must not keep walking folders.
+    // It stops itself here, because whoever removes it doesn't know about the walk.
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        if superview == nil { stopMeasuring() } else { startMeasuring() }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil {
+            wasInWindow = true
+            startMeasuring() // again, if it left a window earlier and has come back
+        } else if wasInWindow {
+            wasInWindow = false
+            stopMeasuring()
+        }
+    }
+
+    deinit { measurement?.cancel() }
 
     /// Up to three icons fanned out, front item first.
     static func stackedIcons(_ items: [FileItem]) -> NSImage {

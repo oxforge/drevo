@@ -1,95 +1,6 @@
 import Darwin
 import Foundation
 
-/// copyfile(3) wrapper: metadata-preserving, recursive, APFS clone when possible,
-/// with byte progress and cancellation.
-public enum CopyEngine {
-    /// Called with bytes copied so far for this item; return false to cancel.
-    public typealias Progress = (Int64) -> Bool
-
-    final class Context {
-        let progress: Progress?
-        var finishedBytes: Int64 = 0
-        var currentFile: Int64 = 0
-        var cancelled = false
-        init(progress: Progress?) { self.progress = progress }
-
-        func report() -> Int32 {
-            guard let progress else { return Int32(COPYFILE_CONTINUE) }
-            if !progress(finishedBytes + currentFile) {
-                cancelled = true
-                return Int32(COPYFILE_QUIT)
-            }
-            return Int32(COPYFILE_CONTINUE)
-        }
-    }
-
-    private static let callback: copyfile_callback_t = { what, stage, state, src, _, ctx in
-        guard let ctx else { return Int32(COPYFILE_CONTINUE) }
-        let c = Unmanaged<Context>.fromOpaque(ctx).takeUnretainedValue()
-        switch (what, stage) {
-        case (Int32(COPYFILE_COPY_DATA), Int32(COPYFILE_PROGRESS)):
-            var copied: off_t = 0
-            copyfile_state_get(state, UInt32(COPYFILE_STATE_COPIED), &copied)
-            c.currentFile = Int64(copied)
-            return c.report()
-        case (Int32(COPYFILE_RECURSE_FILE), Int32(COPYFILE_FINISH)):
-            var st = stat()
-            if let src, lstat(src, &st) == 0 { c.finishedBytes += Int64(st.st_size) }
-            c.currentFile = 0
-            return c.report()
-        case (_, Int32(COPYFILE_ERR)):
-            return Int32(COPYFILE_QUIT)
-        default:
-            return c.cancelled ? Int32(COPYFILE_QUIT) : Int32(COPYFILE_CONTINUE)
-        }
-    }
-
-    public struct Cancelled: Error {}
-
-    /// Copies `source` to `destination` (which must not exist).
-    public static func copy(_ source: URL, to destination: URL, allowClone: Bool, progress: Progress?) throws {
-        let ctx = Context(progress: progress)
-        let state = copyfile_state_alloc()
-        defer { copyfile_state_free(state) }
-        let unmanaged = Unmanaged.passRetained(ctx)
-        defer { unmanaged.release() }
-        copyfile_state_set(state, UInt32(COPYFILE_STATE_STATUS_CB), unsafeBitCast(callback, to: UnsafeRawPointer.self))
-        copyfile_state_set(state, UInt32(COPYFILE_STATE_STATUS_CTX), unmanaged.toOpaque())
-
-        var flags = copyfile_flags_t(COPYFILE_ALL | COPYFILE_RECURSIVE | COPYFILE_NOFOLLOW_SRC)
-        if allowClone { flags |= copyfile_flags_t(COPYFILE_CLONE) }
-        let rc = copyfile(source.path, destination.path, state, flags)
-        if rc != 0 {
-            let code = errno
-            if ctx.cancelled { throw Cancelled() }
-            throw NSError(domain: NSPOSIXErrorDomain, code: Int(code), userInfo: [
-                NSFilePathErrorKey: source.path,
-                NSLocalizedDescriptionKey: "Couldn’t copy “\(source.lastPathComponent)”: \(String(cString: strerror(code)))",
-            ])
-        }
-    }
-
-    /// Bytes and item count under `url` (files only; folders count as items, no bytes).
-    public static func measure(_ url: URL) -> (bytes: Int64, items: Int) {
-        let keys: [URLResourceKey] = [.fileSizeKey, .isDirectoryKey, .isSymbolicLinkKey]
-        guard let values = try? url.resourceValues(forKeys: Set(keys)) else { return (0, 1) }
-        if values.isDirectory != true || values.isSymbolicLink == true {
-            return (Int64(values.fileSize ?? 0), 1)
-        }
-        var bytes: Int64 = 0
-        var items = 1
-        if let e = FileManager.default.enumerator(at: url, includingPropertiesForKeys: keys, options: [], errorHandler: { _, _ in true }) {
-            for case let u as URL in e {
-                items += 1
-                let v = try? u.resourceValues(forKeys: [.fileSizeKey])
-                bytes += Int64(v?.fileSize ?? 0)
-            }
-        }
-        return (bytes, items)
-    }
-}
-
 public struct TransferProgress: Sendable, Equatable {
     public var totalBytes: Int64 = 0
     public var completedBytes: Int64 = 0
@@ -144,11 +55,14 @@ public final class Transfer: @unchecked Sendable {
     public let destination: URL
     public var allowClone = true
     public var trash: Trashing = SystemTrash()
+    /// Which volume an item is on. A move within one volume is a rename; across volumes it
+    /// is a copy followed by deleting the source. Tests replace this to run the second path
+    /// inside one temp folder.
+    public var volumeOf: (URL) -> AnyHashable? = DropPolicy.volumeIdentifier(of:)
     public var onProgress: ((TransferProgress) -> Void)?
     public var resolveConflict: ((Conflict) -> ConflictDecision)?
 
-    private let lock = NSLock()
-    private var _cancelled = false
+    private let cancellation = CancellationToken()
     private var lastReport = Date.distantPast
 
     public init(kind: TransferKind, sources: [URL], destination: URL) {
@@ -157,162 +71,259 @@ public final class Transfer: @unchecked Sendable {
         self.destination = destination
     }
 
-    public func cancel() {
-        lock.lock(); _cancelled = true; lock.unlock()
-    }
+    public func cancel() { cancellation.cancel() }
 
-    public var isCancelled: Bool {
-        lock.lock(); defer { lock.unlock() }
-        return _cancelled
-    }
+    public var isCancelled: Bool { cancellation.isCancelled }
 
     public var title: String {
         let what = sources.count == 1 ? "“\(sources[0].lastPathComponent)”" : "\(sources.count) items"
         return "\(kind == .copy ? "Copying" : "Moving") \(what) to “\(destination.lastPathComponent)”"
     }
 
-    // swiftlint:disable:next function_body_length
-    public func run() -> TransferResult {
-        let fm = FileManager.default
-        var result = TransferResult()
-        var progress = TransferProgress()
-        let destVolume = DropPolicy.volumeIdentifier(of: destination)
-        let plans = sources.map { src -> (URL, Bool, (bytes: Int64, items: Int)) in
-            let sameVolume = DropPolicy.volumeIdentifier(of: src) == destVolume && destVolume != nil
-            // Same-volume moves are renames: count items, not bytes.
-            let size = kind == .move && sameVolume ? (Int64(0), 1) : CopyEngine.measure(src)
-            return (src, sameVolume, size)
-        }
-        progress.totalBytes = plans.reduce(0) { $0 + $1.2.bytes }
-        progress.totalItems = plans.count
-        report(progress, force: true)
+    // MARK: Running
 
+    /// One source, with what is known about it before anything is copied.
+    private struct Item {
+        let source: URL
+        /// A move within one volume: the item is renamed into place, nothing is copied.
+        let byRename: Bool
+        let size: (bytes: Int64, items: Int)
+        var name: String { source.lastPathComponent }
+    }
+
+    /// What `run` remembers between items while it decides where each one goes.
+    private struct DestinationState {
+        /// The destination by identity, not by path: two panes can show one folder through
+        /// /tmp and /private/tmp, a symlink, or different letter case.
+        let folderID: FileIdentity?
+        /// The destination's names, read once rather than for every item that needs a new one.
+        let names = UniqueName.TakenNames()
+        let conflictsTotal: Int
+        var conflictsSeen = 0
+        /// The answer given with "Apply to all".
+        var standingDecision: ConflictAction?
+    }
+
+    /// Where an item goes, or why it goes nowhere.
+    private enum Resolution {
+        /// Put it at `url`. With `replacing` set, `url` is a temporary name next to the item
+        /// to replace, which stays until the new one is complete.
+        case place(at: URL, replacing: URL?)
+        case skip
+        case refuse(String)
+        /// The user chose Stop: end the whole transfer.
+        case stop
+    }
+
+    /// What was changed, for undo.
+    private struct Changes {
         var replaced: [TrashedItem] = []
         var created: [URL] = []
         var moved: [MovedItem] = []
-        var standingDecision: ConflictAction?
-        let conflictsTotal = plans.filter { FileIdentity.exists(destination.appendingPathComponent($0.0.lastPathComponent)) }.count
-        var conflictsSeen = 0
-        // Compare folders by identity, not by path: two panes can show one folder through
-        // /tmp and /private/tmp, a symlink, or different letter case.
-        let destinationID = FileIdentity.of(destination, followLinks: true)
 
-        for (source, sameVolume, size) in plans {
+        var undoRecord: UndoRecord? {
+            var steps: [UndoRecord] = []
+            if !replaced.isEmpty { steps.append(.trashed(replaced)) }
+            if !created.isEmpty { steps.append(.created(created)) }
+            if !moved.isEmpty { steps.append(.moved(moved)) }
+            return steps.isEmpty ? nil : (steps.count == 1 ? steps[0] : .group(steps))
+        }
+    }
+
+    private var fm: FileManager { .default }
+
+    public func run() -> TransferResult {
+        var result = TransferResult()
+        var progress = TransferProgress()
+        let items = plan()
+        progress.totalBytes = items.reduce(0) { $0 + $1.size.bytes }
+        progress.totalItems = items.count
+        report(progress, force: true)
+
+        var changes = Changes()
+        var state = DestinationState(
+            folderID: FileIdentity.of(destination, followLinks: true),
+            conflictsTotal: items.filter { FileIdentity.exists(destination.appendingPathComponent($0.name)) }.count)
+
+        items: for item in items {
             if isCancelled { result.cancelled = true; break }
-            let name = source.lastPathComponent
-            progress.currentName = name
+            progress.currentName = item.name
             report(progress, force: true)
-            let isFolder = source.isDirectoryOnDisk
-
-            if destination.isInside(source) {
-                result.errors.append(FileOperationError.intoItself(name).localizedDescription)
-                continue
-            }
-            var dest = destination.appendingPathComponent(name)
-            let sourceParentID = FileIdentity.of(source.deletingLastPathComponent(), followLinks: true)
-            var sameFolder = sourceParentID != nil && sourceParentID == destinationID
-            if !sameFolder, FileIdentity.exists(dest),
-               FileIdentity.of(dest, followLinks: false) == FileIdentity.of(source, followLinks: false) {
-                sameFolder = true // the "existing" item is the source itself, reached another way
-            }
-            /// When replacing: the item being replaced; the new one is staged under a temporary name.
-            var replacing: URL?
-
-            if sameFolder {
-                if kind == .move { result.skipped.append(source); progress.completedItems += 1; continue }
-                dest = destination.appendingPathComponent(UniqueName.copyName(for: name, isFolder: isFolder, taken: UniqueName.takenIn(destination)))
-            } else if FileIdentity.exists(dest) {
-                conflictsSeen += 1
-                let action: ConflictAction
-                if let standing = standingDecision {
-                    action = standing
-                } else {
-                    let c = Conflict(source: source, existing: dest, sourceIsFolder: isFolder,
-                                     existingIsFolder: dest.isDirectoryOnDisk, remaining: conflictsTotal - conflictsSeen)
-                    let decision = resolveConflict?(c) ?? ConflictDecision(.stop)
-                    if decision.applyToAll { standingDecision = decision.action }
-                    action = decision.action
-                }
-                switch action {
-                case .stop:
-                    result.cancelled = true
-                case .skip:
-                    result.skipped.append(source)
-                    progress.completedItems += 1
-                    progress.completedBytes += size.bytes
-                    continue
-                case .keepBoth:
-                    dest = destination.appendingPathComponent(UniqueName.numberedName(for: name, isFolder: isFolder, taken: UniqueName.takenIn(destination)))
-                case .replace:
-                    if source.isInside(dest) {
-                        result.errors.append("Can’t replace “\(name)” with an item it contains.")
-                        continue
-                    }
-                    replacing = dest
-                    dest = destination.appendingPathComponent(".\(name).fman-\(UUID().uuidString.prefix(8))")
-                }
-                if result.cancelled { break }
-            }
-
             let base = progress.completedBytes
-            let movedByRename = kind == .move && sameVolume
-            do {
-                // 1. Put the item at `dest` (a temporary name when replacing).
-                if movedByRename {
-                    try fm.moveItem(at: source, to: dest)
-                } else {
-                    do {
-                        try CopyEngine.copy(source, to: dest, allowClone: allowClone) { [weak self] copied in
-                            guard let self else { return false }
-                            progress.completedBytes = base + copied
-                            self.report(progress, force: false)
-                            return !self.isCancelled
-                        }
-                    } catch {
-                        // Never leave a half-copied item behind; it didn't exist before.
-                        try? fm.removeItem(at: dest)
-                        throw error
-                    }
-                }
-                // 2. Replace: only now that the new item is complete does the old one go.
-                if let replacing {
-                    var inTrash: URL?
-                    do {
-                        inTrash = try trash.trash(replacing)
-                        try fm.moveItem(at: dest, to: replacing)
-                        replaced.append(TrashedItem(original: replacing, inTrash: inTrash!))
-                        dest = replacing
-                    } catch {
-                        if let inTrash { try? fm.moveItem(at: inTrash, to: replacing) }
-                        if movedByRename { try? fm.moveItem(at: dest, to: source) } else { try? fm.removeItem(at: dest) }
-                        throw error
-                    }
-                }
-                // 3. A move across volumes removes the source last, after everything succeeded.
-                if kind == .move {
-                    if !movedByRename { try fm.removeItem(at: source) }
-                    moved.append(MovedItem(from: source, to: dest))
-                } else {
-                    created.append(dest)
-                }
-                result.outputs.append(dest)
-            } catch is CopyEngine.Cancelled {
+
+            switch resolveDestination(for: item, &state) {
+            case .stop:
                 result.cancelled = true
-                break
-            } catch {
-                result.errors.append((error as NSError).localizedDescription)
+                break items
+            case .skip:
+                result.skipped.append(item.source)
+            case .refuse(let reason):
+                result.errors.append(reason)
+            case .place(var url, let replacing):
+                do {
+                    try place(item, at: url) { copied in
+                        progress.completedBytes = base + copied
+                        self.report(progress, force: false)
+                    }
+                    if let replacing {
+                        changes.replaced.append(try swapIn(url, replacing: replacing, item))
+                        url = replacing
+                    }
+                    if kind == .copy {
+                        changes.created.append(url)
+                    } else if let problem = removeCopiedSource(item) {
+                        // The copy is complete, so the item counts as copied: undo removes
+                        // the copy, and the pane selects it.
+                        changes.created.append(url)
+                        result.errors.append(problem)
+                    } else {
+                        changes.moved.append(MovedItem(from: item.source, to: url))
+                    }
+                    result.outputs.append(url)
+                } catch is CopyEngine.Cancelled {
+                    result.cancelled = true
+                    break items
+                } catch {
+                    result.errors.append((error as NSError).localizedDescription)
+                }
             }
-            progress.completedBytes = base + size.bytes
+            // Every item that was dealt with counts as done: copied, skipped, refused or failed.
+            progress.completedBytes = base + item.size.bytes
             progress.completedItems += 1
             report(progress, force: true)
         }
 
-        var steps: [UndoRecord] = []
-        if !replaced.isEmpty { steps.append(.trashed(replaced)) }
-        if !created.isEmpty { steps.append(.created(created)) }
-        if !moved.isEmpty { steps.append(.moved(moved)) }
-        result.undo = steps.isEmpty ? nil : (steps.count == 1 ? steps[0] : .group(steps))
+        result.undo = changes.undoRecord
         return result
+    }
+
+    private func plan() -> [Item] {
+        let destinationVolume = volumeOf(destination)
+        return sources.map { source in
+            let sameVolume = destinationVolume != nil && volumeOf(source) == destinationVolume
+            let byRename = kind == .move && sameVolume
+            // Renames count items, not bytes.
+            let size = byRename ? (Int64(0), 1) : CopyEngine.measure(source, isCancelled: { isCancelled })
+            return Item(source: source, byRename: byRename, size: size)
+        }
+    }
+
+    // MARK: Steps for one item
+
+    /// Decides where `item` goes: its own name, a new name when it is copied into the folder
+    /// it is already in, or whatever the user answers when the name is taken.
+    private func resolveDestination(for item: Item, _ state: inout DestinationState) -> Resolution {
+        let source = item.source
+        if destination.isInside(source) {
+            return .refuse(FileOperationError.intoItself(item.name).localizedDescription)
+        }
+        let plain = destination.appendingPathComponent(item.name)
+        let exists = FileIdentity.exists(plain)
+
+        let sourceFolderID = FileIdentity.of(source.deletingLastPathComponent(), followLinks: true)
+        // Already in the destination — or the "existing" item is the source itself, reached
+        // another way. Never a conflict: the source must not be offered for replacing.
+        let alreadyThere = (sourceFolderID != nil && sourceFolderID == state.folderID)
+            || (exists && FileIdentity.of(plain, followLinks: false) == FileIdentity.of(source, followLinks: false))
+        if alreadyThere {
+            guard kind == .copy else { return .skip }
+            return .place(at: newName(UniqueName.copyName, for: source, &state), replacing: nil)
+        }
+        guard exists else { return .place(at: plain, replacing: nil) }
+
+        switch conflictAction(for: item, existing: plain, &state) {
+        case .stop:
+            return .stop
+        case .skip:
+            return .skip
+        case .keepBoth:
+            return .place(at: newName(UniqueName.numberedName, for: source, &state), replacing: nil)
+        case .replace:
+            if source.isInside(plain) {
+                return .refuse("Can’t replace “\(item.name)” with an item it contains.")
+            }
+            // A short temporary name of its own: one built from the item's name would pass
+            // the 255-byte limit for long names.
+            return .place(at: destination.appendingPathComponent(".fman-\(UUID().uuidString)"), replacing: plain)
+        }
+    }
+
+    /// A free name in the destination ("x copy" or "x 2"), remembered so the next item
+    /// doesn't get the same one.
+    private func newName(_ scheme: (String, Bool, (String) -> Bool) -> String, for source: URL,
+                         _ state: inout DestinationState) -> URL {
+        let name = scheme(source.lastPathComponent, UniqueName.isPlainFolder(source), state.names.taken(in: destination))
+        state.names.add(name, in: destination)
+        return destination.appendingPathComponent(name)
+    }
+
+    /// The standing "Apply to all" answer, or the user's answer for this item.
+    private func conflictAction(for item: Item, existing: URL, _ state: inout DestinationState) -> ConflictAction {
+        state.conflictsSeen += 1
+        if let standing = state.standingDecision { return standing }
+        let conflict = Conflict(source: item.source, existing: existing, sourceIsFolder: item.source.isDirectoryOnDisk,
+                                existingIsFolder: existing.isDirectoryOnDisk,
+                                remaining: state.conflictsTotal - state.conflictsSeen)
+        let decision = resolveConflict?(conflict) ?? ConflictDecision(.stop)
+        if decision.applyToAll { state.standingDecision = decision.action }
+        return decision.action
+    }
+
+    /// Puts the item at `url`: a rename, or a copy that reports the bytes copied so far.
+    private func place(_ item: Item, at url: URL, copied: @escaping (Int64) -> Void) throws {
+        if item.byRename {
+            try fm.moveItem(at: item.source, to: url)
+            return
+        }
+        do {
+            try CopyEngine.copy(item.source, to: url, allowClone: allowClone) { bytes in
+                copied(bytes)
+                return !self.isCancelled
+            }
+        } catch {
+            // Never leave a half-copied item behind; it didn't exist before.
+            try? fm.removeItem(at: url)
+            throw error
+        }
+    }
+
+    /// Replace, second half: the new item is complete at `staged`, so only now does the old
+    /// one go to the Trash and the new one take its name. If either step fails, the old
+    /// item is put back and the staged one is undone.
+    private func swapIn(_ staged: URL, replacing old: URL, _ item: Item) throws -> TrashedItem {
+        var inTrash: URL?
+        do {
+            let trashed = try trash.trash(old)
+            inTrash = trashed
+            try fm.moveItem(at: staged, to: old)
+            return TrashedItem(original: old, inTrash: trashed)
+        } catch {
+            if let inTrash { try? fm.moveItem(at: inTrash, to: old) }
+            if item.byRename { try? fm.moveItem(at: staged, to: item.source) } else { try? fm.removeItem(at: staged) }
+            throw error
+        }
+    }
+
+    /// The last step of a move across volumes, after everything else succeeded: deletes the
+    /// source. Returns what to tell the user if it can't be deleted (read-only disk, no
+    /// permission); nil when the source is gone, which a rename has done already.
+    private func removeCopiedSource(_ item: Item) -> String? {
+        guard !item.byRename else { return nil }
+        let notRemoved = "“\(item.name)” was copied, but the original couldn’t be removed."
+        // Asked first, because trying isn't harmless: deleting a folder empties it before
+        // the folder itself turns out to be undeletable, which would leave half an
+        // original while undo takes away the only complete copy.
+        guard fm.isDeletableFile(atPath: item.source.path) else {
+            return notRemoved + " You don’t have permission to delete it, or its disk is read-only."
+        }
+        do {
+            try fm.removeItem(at: item.source)
+            return nil
+        } catch {
+            let ns = error as NSError
+            let reason = ns.localizedFailureReason ?? (ns.userInfo[NSUnderlyingErrorKey] as? NSError)?.localizedDescription ?? ns.localizedDescription
+            return notRemoved + " " + reason
+        }
     }
 
     /// Byte updates at most ~30 a second; item boundaries (forced) always report and
@@ -324,23 +335,5 @@ public final class Transfer: @unchecked Sendable {
             lastReport = now
         }
         onProgress?(p)
-    }
-}
-
-/// Device + inode: the same item no matter which path reaches it.
-struct FileIdentity: Equatable {
-    let device: dev_t
-    let inode: ino_t
-
-    static func of(_ url: URL, followLinks: Bool) -> FileIdentity? {
-        var st = stat()
-        let rc = followLinks ? stat(url.path, &st) : lstat(url.path, &st)
-        return rc == 0 ? FileIdentity(device: st.st_dev, inode: st.st_ino) : nil
-    }
-
-    /// True if anything is at `url`, including a broken symlink.
-    static func exists(_ url: URL) -> Bool {
-        var st = stat()
-        return lstat(url.path, &st) == 0
     }
 }

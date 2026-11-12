@@ -11,12 +11,16 @@ final class SettingsModel: ObservableObject {
     @Published private var tick = 0
     @Published var defaultFolderApp: String = ""
     @Published var loginItemStatus: String = ""
-    private var observer: NSObjectProtocol?
+    private var observers: [NSObjectProtocol] = []
 
     init(env: AppEnvironment) {
         self.env = env
-        observer = NotificationCenter.default.addObserver(forName: Preferences.didChange, object: env.preferences, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.tick += 1 }
+        // Preferences, and the shell setup's state shown in the Shell tab.
+        let sources: [(Notification.Name, AnyObject)] = [(Preferences.didChange, env.preferences), (ShellSetup.didChange, env.shellSetup)]
+        observers = sources.map { name, object in
+            NotificationCenter.default.addObserver(forName: name, object: object, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.tick += 1 }
+            }
         }
         refreshIntegration()
     }
@@ -90,53 +94,6 @@ final class SettingsModel: ObservableObject {
             refreshIntegration()
             tick += 1
         }
-    }
-}
-
-/// Why changing the default folder app failed, in words a person can act on.
-///
-/// macOS 26 refuses to make any app but Finder the folder opener: both
-/// `NSWorkspace.setDefaultApplication(at:toOpen: .folder)` and the older
-/// `LSSetDefaultRoleHandlerForContentType("public.folder", …)` return paramErr (-50).
-struct FolderViewerProblem {
-    let refusedByMacOS: Bool
-    let title: String
-    let detail: String
-
-    init(_ error: Error) {
-        let ns = error as NSError
-        let underlying = ns.userInfo[NSUnderlyingErrorKey] as? NSError
-        let status = ns.domain == NSOSStatusErrorDomain ? ns.code : (underlying?.domain == NSOSStatusErrorDomain ? underlying!.code : nil)
-        if status == -50 {
-            refusedByMacOS = true
-            title = "macOS keeps folders in Finder."
-            detail = """
-            This version of macOS doesn’t let any other app become the app that opens folders \
-            (Launch Services refuses the change). Ways to get folders into fman instead are listed \
-            under “Open folders in fman” in this tab.
-            """
-        } else {
-            refusedByMacOS = false
-            title = "Couldn’t change the folder viewer."
-            detail = "\(ns.localizedDescription) (\(underlying.map { "\($0.domain) \($0.code)" } ?? "\(ns.domain) \(ns.code)"))"
-        }
-    }
-}
-
-/// The global `NSFileViewer` default many apps use for "Show in Finder".
-enum FileViewerSetting {
-    static let key = "NSFileViewer" as CFString
-
-    static var current: String? {
-        CFPreferencesCopyValue(key, kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost) as? String
-    }
-
-    static var isFman: Bool { current == Bundle.main.bundleIdentifier }
-
-    static func set(_ useFman: Bool) {
-        let value: CFPropertyList? = useFman ? (Bundle.main.bundleIdentifier ?? Fman.bundleIdentifier) as CFString : nil
-        CFPreferencesSetValue(key, value, kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
-        CFPreferencesSynchronize(kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
     }
 }
 

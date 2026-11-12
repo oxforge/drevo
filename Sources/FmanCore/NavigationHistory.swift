@@ -23,6 +23,18 @@ public struct NavigationHistory: Equatable, Sendable {
         current = url
     }
 
+    /// The current folder is gone (deleted outside the app) and `url` is shown in its
+    /// place. Unlike `visit`, the vanished folder isn't recorded: Back must not lead to
+    /// it. If `url` is also the next Back or Forward entry, that entry is dropped, so
+    /// one press still goes somewhere else.
+    public mutating func replaceCurrent(with url: URL) {
+        let path = url.standardizedFileURL.path
+        guard path != current.standardizedFileURL.path else { return }
+        current = url
+        if backStack.last?.standardizedFileURL.path == path { backStack.removeLast() }
+        if forwardStack.last?.standardizedFileURL.path == path { forwardStack.removeLast() }
+    }
+
     @discardableResult
     public mutating func goBack() -> URL? {
         guard let previous = backStack.popLast() else { return nil }

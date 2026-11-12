@@ -38,6 +38,49 @@ import Testing
         #expect(wc.paneGroup.activePane === wc.paneGroup.panes[0], "focus stays in the source pane")
     }
 
+    /// The destination is typed as a path through a symlink; the pane shows the folder itself.
+    @Test func f5ThroughASymlinkedPathSelectsTheResultInThePaneShowingTheFolder() {
+        let link = fx.url.appendingPathComponent("link")
+        try! FileManager.default.createSymbolicLink(at: link, withDestinationURL: right)
+        let wc = window()
+        wc.env.preferences.confirmTransfers = true
+        prompts.typedDestination = link.path
+        wc.paneGroup.activePane.browser.select([left.appendingPathComponent("a.txt")])
+        wc.perform(.copyToOtherPane)
+        #expect(exists("right/a.txt"))
+        #expect(wc.paneGroup.panes[1].currentDirectory.path == right.path)
+        #expect(wc.paneGroup.panes[1].selectedItems.map(\.name) == ["a.txt"])
+    }
+
+    /// The background path of a transfer (tests otherwise run them inline): progress and
+    /// the result arrive through the main run loop, where a test that spins it sees them.
+    @Test func aBackgroundTransferFinishesOnTheMainRunLoop() {
+        let wc = window()
+        let ops = wc.env.operations
+        ops.runTransfersSynchronously = false
+        var jobUpdates = 0
+        let observer = NotificationCenter.default.addObserver(forName: OperationsCenter.jobsDidChange, object: ops, queue: nil) { _ in
+            MainActor.assumeIsolated { jobUpdates += 1 }
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        var result: TransferResult?
+        var finishedOnMain = false
+        ops.transfer(.copy, [left.appendingPathComponent("a.txt"), left.appendingPathComponent("Folder")], to: right, window: nil) { r in
+            finishedOnMain = Thread.isMainThread
+            result = r
+        }
+        #expect(ops.jobs.count == 1)
+        #expect(result == nil, "runs in the background")
+        let end = Date().addingTimeInterval(10)
+        while result == nil, Date() < end { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+        #expect(finishedOnMain)
+        #expect(result?.outputs.map(\.lastPathComponent) == ["a.txt", "Folder"])
+        #expect(ops.jobs.isEmpty)
+        #expect(jobUpdates >= 3, "the job was added, made progress and was removed")
+        #expect(exists("right/a.txt"))
+        #expect(names(wc.paneGroup.panes[1]) == ["Folder", "a.txt"], "the panes were refreshed")
+    }
+
     @Test func f6MovesAndUndoMovesBack() {
         let wc = window()
         wc.paneGroup.activePane.browser.select([left.appendingPathComponent("b.txt")])

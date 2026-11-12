@@ -80,6 +80,33 @@ import Testing
         #expect(resolved.standardizedFileURL.resolvingSymlinksInPath().path == d.standardizedFileURL.resolvingSymlinksInPath().path)
     }
 
+    @Test func failedAliasKeepsEarlierAliasesUndoable() throws {
+        let a = tmp.file("a.txt")
+        let missing = tmp.url.appendingPathComponent("missing.txt")
+        do {
+            _ = try ops.makeAlias([a, missing])
+            Issue.record("expected a partial failure")
+        } catch let partial as PartialFailure {
+            #expect(exists("a.txt alias"), "the first alias was made")
+            #expect(partial.undo == .created([tmp.url.appendingPathComponent("a.txt alias")]))
+            _ = try ops.undo(partial.undo)
+            #expect(!exists("a.txt alias"))
+        }
+        // Nothing made before the failure: a plain error, nothing to undo.
+        do {
+            _ = try ops.makeAlias([missing])
+            Issue.record("expected an error")
+        } catch {
+            #expect(!(error is PartialFailure))
+        }
+    }
+
+    @Test func aliasesOfTheSameItemGetDistinctNames() throws {
+        let a = tmp.file("a.txt")
+        let (made, _) = try ops.makeAlias([a, a])
+        #expect(made.map(\.lastPathComponent) == ["a.txt alias", "a.txt alias 2"])
+    }
+
     @Test func deleteImmediately() throws {
         let a = tmp.file("a.txt")
         try ops.deleteImmediately([a])
@@ -91,6 +118,81 @@ import Testing
         #expect(URL(fileURLWithPath: "/x/y/z").isInside(a))
         #expect(a.isInside(a))
         #expect(!URL(fileURLWithPath: "/x/yz").isInside(a))
+        #expect(!a.isInside(URL(fileURLWithPath: "/x/y/z")))
+    }
+
+    /// The physical path of an existing item (no symlinks, e.g. /private/var for /var).
+    func physical(_ url: URL) -> String {
+        let p = realpath(url.path, nil)!
+        defer { free(p) }
+        return String(cString: p)
+    }
+
+    @Test func insideIsDecidedByIdentityNotByPathText() throws {
+        let docs = tmp.dir("Docs")
+        let sub = tmp.dir("Docs/sub")
+        let sibling = tmp.dir("Docs2")
+        #expect(sub.isInside(docs))
+        #expect(docs.isInside(docs))
+        #expect(!docs.isInside(sub))
+        #expect(!sibling.isInside(docs))
+        #expect(sub.isInside(URL(fileURLWithPath: "/")))
+
+        // The same folders through other spellings of their path.
+        #expect(sub.isInside(URL(fileURLWithPath: physical(docs))))
+        #expect(URL(fileURLWithPath: physical(sub)).isInside(docs))
+        #expect(tmp.url.appendingPathComponent("Docs/./sub/../sub").isInside(docs))
+        let viaDataVolume = URL(fileURLWithPath: "/System/Volumes/Data" + physical(sub))
+        if FileIdentity.exists(viaDataVolume) {
+            #expect(viaDataVolume.isInside(docs))
+            #expect(sub.isInside(URL(fileURLWithPath: "/System/Volumes/Data" + physical(docs))))
+        }
+
+        // Through a link in the receiver's path: resolved, so it is inside the real folder.
+        let link = tmp.url.appendingPathComponent("L")
+        try fm.createSymbolicLink(at: link, withDestinationURL: docs)
+        #expect(link.appendingPathComponent("sub").isInside(docs))
+        #expect(link.isInside(docs), "a link used as the receiver stands for the folder it points to")
+        // `other` is not followed: the link itself contains nothing.
+        #expect(!sub.isInside(link))
+        #expect(!docs.isInside(link))
+
+        // Letter case names the same folder exactly when the volume says so.
+        let lower = tmp.url.appendingPathComponent("docs")
+        let caseInsensitiveVolume = FileIdentity.exists(lower)
+        #expect(sub.isInside(lower) == caseInsensitiveVolume)
+        #expect(FileIdentity.sameItem(docs, lower) == caseInsensitiveVolume)
+    }
+
+    /// A destination typed by hand may not exist yet: it is inside whatever holds its
+    /// nearest existing ancestor.
+    @Test func insideForAPathThatDoesNotExistYet() throws {
+        let d = tmp.dir("D")
+        #expect(d.appendingPathComponent("new/deeper").isInside(d))
+        #expect(d.appendingPathComponent("new").isInside(tmp.url))
+        #expect(!tmp.url.appendingPathComponent("elsewhere/new").isInside(d))
+        let link = tmp.url.appendingPathComponent("L")
+        try fm.createSymbolicLink(at: link, withDestinationURL: d)
+        #expect(link.appendingPathComponent("new").isInside(d), "the existing part is still resolved")
+    }
+
+    @Test func sameItemComparesIdentities() throws {
+        let d = tmp.dir("D")
+        let other = tmp.dir("E")
+        let link = tmp.url.appendingPathComponent("L")
+        try fm.createSymbolicLink(at: link, withDestinationURL: d)
+        #expect(FileIdentity.sameItem(d, d))
+        #expect(FileIdentity.sameItem(d, URL(fileURLWithPath: physical(d))), "/var/… and /private/var/…")
+        #expect(FileIdentity.sameItem(d, tmp.url.appendingPathComponent("E/../D")))
+        #expect(!FileIdentity.sameItem(d, other))
+        #expect(FileIdentity.sameItem(link, d), "links are followed by default")
+        #expect(!FileIdentity.sameItem(link, d, followLinks: false))
+        #expect(FileIdentity.sameItem(link, link, followLinks: false))
+        // Nothing on disk to compare: the standardized paths decide.
+        let missing = tmp.url.appendingPathComponent("missing")
+        #expect(FileIdentity.sameItem(missing, tmp.url.appendingPathComponent("D/../missing")))
+        #expect(!FileIdentity.sameItem(missing, d))
+        #expect(!FileIdentity.sameItem(missing, tmp.url.appendingPathComponent("missing2")))
     }
 }
 
@@ -195,6 +297,40 @@ import Testing
         let (r, _, _) = transfer(.copy, [d], to: inner)
         #expect(r.errors.count == 1)
         #expect(r.outputs.isEmpty)
+    }
+
+    /// Every item that was dealt with counts as done, whether it was copied, skipped or
+    /// refused, so the progress bar reaches the end.
+    @Test func refusedAndSkippedItemsCountInProgress() {
+        // Refused: a folder into itself.
+        let d = tmp.dir("D")
+        tmp.file("D/x.txt", "XXXX")
+        let a = tmp.file("a.txt", "AA")
+        let (intoItself, updates, _) = transfer(.copy, [d, a], to: tmp.dir("D/inner"))
+        #expect(intoItself.errors.count == 1)
+        #expect(updates.last?.totalItems == 2)
+        #expect(updates.last?.completedItems == 2)
+        #expect(updates.last?.fraction == 1)
+
+        // Refused: Replace would trash the folder that holds the source.
+        tmp.file("p/photos/photos/img.jpg", "I")
+        let b = tmp.file("src/b.txt", "B")
+        let (contains, updates2, _) = transfer(.copy, [tmp.url.appendingPathComponent("p/photos/photos"), b],
+                                               to: tmp.url.appendingPathComponent("p"), decide: ConflictDecision(.replace))
+        #expect(contains.errors.count == 1)
+        #expect(updates2.last?.completedItems == 2)
+        #expect(updates2.last?.fraction == 1)
+
+        // Skipped: a move into the folder the item is already in, and a conflict.
+        tmp.file("dest/b.txt", "old")
+        let (skipped, updates3, _) = transfer(.move, [a, b], to: tmp.url, decide: ConflictDecision(.skip))
+        #expect(skipped.skipped == [a])
+        let (conflict, updates4, _) = transfer(.copy, [b], to: tmp.url.appendingPathComponent("dest"), decide: ConflictDecision(.skip))
+        #expect(conflict.skipped == [b])
+        for last in [updates3.last, updates4.last] {
+            #expect(last?.completedItems == last?.totalItems)
+            #expect(last?.fraction == 1)
+        }
     }
 
     @Test func moveSameVolumeAndUndo() throws {

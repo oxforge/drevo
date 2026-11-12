@@ -90,9 +90,8 @@ public final class ArchiveExtraction: @unchecked Sendable {
 
         let taken = UniqueName.takenIn(destination)
         if entries.count == 1, let only = entries.first {
-            let isFolder = only.isDirectoryOnDisk
-            let name = UniqueName.numberedName(for: only.lastPathComponent, isFolder: isFolder, taken: taken)
-            let dest = destination.appendingPathComponent(name, isDirectory: isFolder)
+            let name = UniqueName.numberedName(for: only.lastPathComponent, isFolder: UniqueName.isPlainFolder(only), taken: taken)
+            let dest = destination.appendingPathComponent(name, isDirectory: only.isDirectoryOnDisk)
             try fm.moveItem(at: only, to: dest)
             return [dest]
         }

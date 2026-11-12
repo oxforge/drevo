@@ -92,6 +92,7 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
         }
         statusBar.isHidden = !env.preferences.showStatusBar
         sortButton.update(sort)
+        sortButton.showShortcuts(env.keyMap)
         sortButton.onChoose = { [weak self] key in self?.chooseSort(key) }
         sortButton.onReverse = { [weak self] in self?.reverseSort() }
         header.accessoryStack.insertArrangedSubview(sortButton, at: 0)
@@ -185,9 +186,23 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
         onChange?(self)
     }
 
-    func reload() {
-        browser.reload(options: env.preferences.listingOptions(sort: sort, filter: filter))
+    /// Re-reads what the pane shows. `changedFolders` (see `FileBrowser.reload`) limits
+    /// the work to those folders; nil re-reads everything.
+    func reload(changedFolders: Set<String>? = nil) {
+        let folderBefore = currentDirectory
+        let shownBefore = shownDirectories
+        browser.reload(options: env.preferences.listingOptions(sort: sort, filter: filter), changedFolders: changedFolders)
         refreshChrome()
+        if currentDirectory.standardizedFileURL.path != folderBefore.standardizedFileURL.path {
+            // The folder the pane was in is gone (deleted outside the app) and Columns
+            // view fell back to a folder above it: the pane is there now. Back shouldn't
+            // lead to the folder that no longer exists.
+            history.replaceCurrent(with: currentDirectory)
+            onChange?(self)
+        } else if shownDirectories != shownBefore {
+            // Columns came or went: other folders are on screen (and to be watched).
+            onChange?(self)
+        }
     }
 
     // MARK: Sorting
@@ -254,13 +269,24 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
         if doReload { reload() }
     }
 
-    /// Files changed (FSEvents, an operation, undo). While a rename is being typed the
-    /// reload waits; ending the edit early would commit a half-typed name.
-    func reloadForExternalChange() {
+    /// Files changed (FSEvents, an operation, undo); `changedFolders` when it is known
+    /// which. While a rename is being typed the reload waits; ending the edit early
+    /// would commit a half-typed name.
+    func reloadForExternalChange(in changedFolders: Set<String>? = nil) {
         guard !InlineRenamer.isEditing else {
             reloadPendingAfterRename = true
             return
         }
+        // A reload that waited for a rename could be about any folder: read them all.
+        let postponed = reloadPendingAfterRename
+        reloadPendingAfterRename = false
+        reload(changedFolders: postponed ? nil : changedFolders)
+    }
+
+    /// A rename ended, in this pane or another one: catch up on a reload that waited.
+    func reloadIfPostponed() {
+        guard reloadPendingAfterRename, !InlineRenamer.isEditing else { return }
+        reloadPendingAfterRename = false
         reload()
     }
 
@@ -312,9 +338,7 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
         let others = files.filter { ArchiveExtraction.format(of: $0.url) == nil }
         if !archives.isEmpty {
             operations.extract(archives.map(\.url), window: view.window) { [weak self] outputs in
-                guard let self else { return }
-                let here = outputs.filter { $0.deletingLastPathComponent().standardizedFileURL.path == self.currentDirectory.standardizedFileURL.path }
-                self.reload(selecting: here)
+                self?.reload(selectingResults: outputs)
             }
         }
         if !others.isEmpty { env.opener.open(others.map(\.url)) }
@@ -361,6 +385,11 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
 
     static func userFolder(_ d: FileManager.SearchPathDirectory) -> URL {
         FileManager.default.urls(for: d, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser
+    }
+
+    /// The key bindings changed: refresh what names them.
+    func keyMapChanged() {
+        sortButton.showShortcuts(env.keyMap)
     }
 
     func applyPreferences() {
@@ -423,8 +452,8 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
         activate(focus: true)
         operations.transfer(kind, urls, to: destination, window: view.window) { [weak self] result in
             guard let self else { return }
-            if destination.standardizedFileURL.path == self.currentDirectory.standardizedFileURL.path {
-                self.reload(selecting: result.outputs)
+            if FileIdentity.sameItem(destination, self.currentDirectory) {
+                self.reload(selectingResults: result.outputs)
             }
         }
     }

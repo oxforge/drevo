@@ -7,6 +7,8 @@ final class InfoPanel: NSWindowController, NSWindowDelegate {
     private static var open: [InfoPanel] = []
     let url: URL
     private let sizeLabel = NSTextField(labelWithString: "Calculating…")
+    /// Stops the folder walk when the panel closes.
+    let measurement = CancellationToken()
 
     static func show(for url: URL, relativeDates: Bool) {
         if let existing = open.first(where: { $0.url == url }) {
@@ -22,7 +24,8 @@ final class InfoPanel: NSWindowController, NSWindowDelegate {
         panel.showWindow(nil)
     }
 
-    private init(url: URL, relativeDates: Bool) {
+    /// `show(for:relativeDates:)` is the way in; tests build a panel without showing it.
+    init(url: URL, relativeDates: Bool) {
         self.url = url
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 320, height: 380),
                             styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
@@ -88,12 +91,12 @@ final class InfoPanel: NSWindowController, NSWindowDelegate {
 
         if item?.isDirectory == true {
             let url = self.url
-            DispatchQueue.global(qos: .utility).async {
-                let (bytes, items) = CopyEngine.measure(url)
-                DispatchQueue.main.async {
-                    MainActor.assumeIsolated {
-                        self.sizeLabel.stringValue = "\(Formatting.size(bytes)) for \(Formatting.itemCount(max(0, items - 1)))"
-                    }
+            let token = measurement
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                let (bytes, items) = CopyEngine.measure(url) { token.isCancelled }
+                guard !token.isCancelled else { return }
+                onMainRunLoop {
+                    self?.sizeLabel.stringValue = "\(Formatting.size(bytes)) for \(Formatting.itemCount(max(0, items - 1)))"
                 }
             }
         } else {
@@ -107,6 +110,7 @@ final class InfoPanel: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        measurement.cancel()
         Self.open.removeAll { $0 === self }
     }
 }

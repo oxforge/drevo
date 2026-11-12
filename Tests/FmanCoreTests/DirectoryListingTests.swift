@@ -74,19 +74,36 @@ import Testing
 }
 
 @Suite struct ListingPerformanceTests {
-    @Test func bigFolderListsQuickly() throws {
+    private func bigFolder() -> TempDir {
         let tmp = TempDir()
         for i in 0..<5000 {
             FileManager.default.createFile(atPath: tmp.url.appendingPathComponent("file-\(i).txt").path, contents: nil)
         }
+        return tmp
+    }
+
+    @Test func bigFolderListsEverythingInNumericOrder() throws {
+        let tmp = bigFolder()
+        let items = try DirectoryListing.load(tmp.url, options: ListingOptions())
+        #expect(items.count == 5000)
+        #expect(items[1].name == "file-1.txt" && items[2].name == "file-2.txt", "numeric order")
+        #expect(items.last?.name == "file-4999.txt")
+    }
+
+    // A wall-clock limit says nothing in a debug build on a busy machine, so the timing is
+    // checked only by the release perf probe:
+    //   make test TEST_ARGS="-c release -Xswiftc -enable-testing --filter bigFolderListsQuickly"
+    #if !DEBUG
+    @Test func bigFolderListsQuickly() throws {
+        let tmp = bigFolder()
         let start = Date()
         let items = try DirectoryListing.load(tmp.url, options: ListingOptions())
         let elapsed = Date().timeIntervalSince(start)
         #expect(items.count == 5000)
-        #expect(items[1].name == "file-1.txt" && items[2].name == "file-2.txt", "numeric order")
-        // Debug build; release is ~3x faster. Generous bound to catch regressions only.
+        // Generous bound to catch regressions only.
         #expect(elapsed < 1.0, "listing 5000 entries took \(elapsed)s")
     }
+    #endif
 
     @Test func fastPathMatchesResourceValues() throws {
         let tmp = TempDir()

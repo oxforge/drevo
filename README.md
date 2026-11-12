@@ -143,9 +143,11 @@ and a `keybindings.defaults.json` reference beside it. Map command ids to keys:
 }
 ```
 
-Keys are written like `cmd+shift+n`, `opt+cmd+backspace`, `f5`, `tab` or `!`; `null`
-unbinds a command. Changes apply when you switch back to fman, and unknown commands, bad
-keys or clashes are reported.
+Keys are written like `cmd+shift+n`, `opt+cmd+backspace`, `f5`, `tab` or `!`. A value is
+one key or a list of keys; `null` or `[]` unbinds a command. Changes apply when you switch
+back to fman, and unknown commands, bad keys or clashes are reported. A key that can't be
+read is skipped, and if none of a command's keys can be read (a typo), the command keeps
+the keys it had.
 
 ## The command line
 
@@ -158,7 +160,13 @@ The bar under the panes runs commands in the active pane's folder:
   after an hour, or via Settings ▸ Shell ▸ Reload (zsh and bash; other shells load their
   config for every command). PATH, aliases and functions match Terminal.
   Output streams into the console (⌥⌘J), with stderr in red, then the exit status and
-  timing. ⌘. stops it (Ctrl-C to the whole process group).
+  timing. The console keeps the latest 400,000 characters, and output that arrives
+  faster than it can be shown is skipped, with an "… output skipped …" note.
+  ⌘. stops the command: Ctrl-C to its whole process group, then a hard kill if it is
+  still running two seconds later. Closing the window or quitting fman stops it too.
+  A command is finished when its shell exits, even if it left a process in the
+  background (`server &`): the console doesn't wait for that process and doesn't show
+  what it prints later, so send its output to a file.
 - **⌘Return** runs it in your terminal app instead, for interactive tools like vim, top
   or ssh, and leaves a shell open there.
 - **⌥Return** inserts the selected names, shell-quoted (⇧⌥Return inserts full paths).

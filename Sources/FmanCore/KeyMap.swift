@@ -2,7 +2,7 @@ import Foundation
 
 /// The active shortcut table: registry defaults, then user overrides from keybindings.json.
 ///
-/// keybindings.json maps command ids to a key, a list of keys, or null (unbind):
+/// keybindings.json maps command ids to a key, a list of keys, or null / an empty list (unbind):
 /// ```json
 /// { "file.rename": "f2", "nav.levelUp": ["left", "h"], "pane.swap": null }
 /// ```
@@ -67,6 +67,8 @@ public struct KeyMap: Equatable, Sendable {
     }
 
     /// Applies overrides; returns problems (unknown command, bad key) without failing the rest.
+    /// A key that can't be read is skipped; when none of an entry's keys can be read, the
+    /// command keeps its current keys.
     @discardableResult
     public mutating func applyOverrides(json data: Data) throws -> [OverrideProblem] {
         let object = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
@@ -81,21 +83,28 @@ public struct KeyMap: Equatable, Sendable {
                 problems.append(OverrideProblem(command: rawID, message: "unknown command"))
                 continue
             }
-            let strings: [String]
+            let listed: [Any]
             switch value {
-            case is NSNull: strings = []
-            case let s as String: strings = [s]
-            case let a as [Any]: strings = a.compactMap { $0 as? String }
+            case is NSNull: listed = []
+            case let s as String: listed = [s]
+            case let a as [Any]: listed = a
             default:
                 problems.append(OverrideProblem(command: rawID, message: "expected a string, a list of strings, or null"))
                 continue
             }
             var combos: [KeyCombo] = []
-            for s in strings {
+            for entry in listed {
+                guard let s = entry as? String else {
+                    problems.append(OverrideProblem(command: rawID, message: "keys in a list must be strings"))
+                    continue
+                }
                 do { combos.append(try KeyCombo(parsing: s)) } catch {
                     problems.append(OverrideProblem(command: rawID, message: "can't read key \"\(s)\""))
                 }
             }
+            // Keys were listed but none could be read: a typo, not a request to unbind.
+            // The command keeps the keys it has; only null or an empty list unbinds.
+            if combos.isEmpty && !listed.isEmpty { continue }
             bindings[id] = combos
             overridden.insert(id)
         }

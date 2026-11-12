@@ -159,8 +159,8 @@ final class PaneGroupViewController: NSViewController, NSSplitViewDelegate {
             }
             self.env.operations.transfer(kind, urls, to: dest, window: window) { result in
                 // Show the results where they landed; keep focus where it was.
-                for pane in self.panes where pane.currentDirectory.standardizedFileURL.path == dest.standardizedFileURL.path {
-                    pane.reload(selecting: result.outputs)
+                for pane in self.panes where FileIdentity.sameItem(pane.currentDirectory, dest) {
+                    pane.reload(selectingResults: result.outputs)
                 }
                 source.reload()
             }

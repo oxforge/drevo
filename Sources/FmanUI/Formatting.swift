@@ -1,7 +1,7 @@
 import AppKit
 import FmanCore
 
-/// Shared formatters and icon cache.
+/// Shared formatters.
 @MainActor
 enum Formatting {
     static let byteCount: ByteCountFormatter = {
@@ -47,23 +47,5 @@ enum Formatting {
     static func displayName(_ url: URL) -> String {
         if let name = try? url.resourceValues(forKeys: [.localizedNameKey]).localizedName { return name }
         return url.lastPathComponent
-    }
-}
-
-@MainActor
-final class FileIcons {
-    static let shared = FileIcons()
-    private let cache = NSCache<NSString, NSImage>()
-
-    func icon(for url: URL) -> NSImage {
-        let key = url.path as NSString
-        if let cached = cache.object(forKey: key) { return cached }
-        let image = NSWorkspace.shared.icon(forFile: url.path)
-        cache.setObject(image, forKey: key)
-        return image
-    }
-
-    func invalidate(_ url: URL) {
-        cache.removeObject(forKey: url.path as NSString)
     }
 }

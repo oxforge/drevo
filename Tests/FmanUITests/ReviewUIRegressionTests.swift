@@ -40,6 +40,54 @@ import Testing
         #expect(pane.selectedItems.map(\.name) == ["finished.txt"])
     }
 
+    /// A rename anywhere postpones every pane's reload; when it ends, every pane that
+    /// waited catches up, not only the one that was renaming.
+    @Test func cancellingARenameReloadsTheOtherPanesThatWaited() throws {
+        let wc = window()
+        let w = wc.window!
+        let (left, right) = (wc.paneGroup.panes[0], wc.paneGroup.panes[1])
+        // A pane in another window waits too: there is one rename editor per app.
+        let other = makeWindow([fx.url.appendingPathComponent("Target"), fx.url],
+                               env: testEnvironment(trash: fx.url.appendingPathComponent(".T2"), prompts: prompts))
+        let elsewhere = other.paneGroup.panes[0]
+        left.browser.select([fx.url.appendingPathComponent("note.txt")])
+        wc.perform(.rename)
+        let editor = try #require(w.firstResponder as? NSTextView)
+        editor.string = "half"
+
+        fx.file("Target/arrived.txt")
+        right.reloadForExternalChange()
+        elsewhere.reloadForExternalChange()
+        #expect(w.firstResponder === editor, "still editing")
+        #expect(!right.browser.visibleItems.contains { $0.name == "arrived.txt" }, "the reload waits for the rename")
+
+        editor.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
+        #expect(exists("note.txt"))
+        #expect(right.browser.visibleItems.contains { $0.name == "arrived.txt" })
+        #expect(elsewhere.browser.visibleItems.contains { $0.name == "arrived.txt" })
+        // Plain values: a failed expectation on a pane property would dump the whole pane.
+        let stillWaiting = [right.reloadPendingAfterRename, elsewhere.reloadPendingAfterRename]
+        #expect(stillWaiting == [false, false])
+    }
+
+    @Test func aRenameThatFailsReloadsTheOtherPanesThatWaited() throws {
+        fx.file("taken.txt")
+        let wc = window()
+        let w = wc.window!
+        let (left, right) = (wc.paneGroup.panes[0], wc.paneGroup.panes[1])
+        left.browser.select([fx.url.appendingPathComponent("note.txt")])
+        wc.perform(.rename)
+        let editor = try #require(w.firstResponder as? NSTextView)
+        fx.file("Target/arrived.txt")
+        right.reloadForExternalChange()
+        editor.string = "taken.txt"
+        w.makeFirstResponder(left.browser.activeTableView)
+        #expect(prompts.errors.count == 1)
+        #expect(right.browser.visibleItems.contains { $0.name == "arrived.txt" })
+        let stillWaiting = right.reloadPendingAfterRename
+        #expect(!stillWaiting)
+    }
+
     @Test func rightClickInAnEarlierColumnDoesNotCrash() throws {
         let wc = window([.columns, .columns])
         let pane = wc.paneGroup.activePane

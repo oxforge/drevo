@@ -92,12 +92,6 @@ final class ColumnBrowserViewController: NSViewController, FileBrowser {
         return columns.contains { $0.tableView === fr }
     }
 
-    /// The first column: Home for paths inside Home, else the volume root.
-    static func root(for url: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
-        let segments = PathBarView.segments(for: url, home: home)
-        return segments.first ?? URL(fileURLWithPath: "/")
-    }
-
     func display(_ directory: URL, selecting: URL?) {
         _ = view
         let chain = PathBarView.segments(for: directory)
@@ -126,25 +120,36 @@ final class ColumnBrowserViewController: NSViewController, FileBrowser {
         scrollToFocused()
     }
 
-    func reload(options newOptions: ListingOptions) {
+    func reload(options newOptions: ListingOptions, changedFolders: Set<String>?) {
+        // Only the same view of the folders can be refreshed in part.
+        let changed = newOptions == options ? changedFolders : nil
+        // A new filter starts over at its first match (the pane selects it).
+        let sameFilter = newOptions.filter == options.filter
         options = newOptions
         _ = view
-        // Re-read every column, keeping each one's selection.
+        // Re-read the columns (all, or the ones whose folder changed), keeping each
+        // one's selection.
         var keep = 0
+        var reloadedLast = false
         for (i, col) in columns.enumerated() {
-            col.reload(options: options)
             keep = i
             // Keep a column while its folder exists, even if a filter or the hidden-files
             // setting hides it in its parent (e.g. a path typed into ~/.config).
-            if i + 1 < columns.count {
-                var isDir: ObjCBool = false
-                let next = columns[i + 1].directory
-                if !FileManager.default.fileExists(atPath: next.path, isDirectory: &isDir) || !isDir.boolValue { break }
+            let nextIsGone = i + 1 < columns.count && !columns[i + 1].directory.isDirectoryOnDisk
+            let isLast = i + 1 == columns.count || nextIsGone
+            let folderChanged = changed.map { $0.contains(DirectoryWatcher.normalize(col.directory.path)) } ?? true
+            if folderChanged || nextIsGone {
+                // Only the last column may move its cursor to a neighbour: in the others
+                // the next column still shows what was selected.
+                col.reload(options: options, keepingCursor: isLast && sameFilter)
+                reloadedLast = isLast
             }
+            if nextIsGone { break }
         }
         if keep + 1 < columns.count { removeColumns(from: keep + 1) }
         focusedIndex = min(focusedIndex, columns.count - 1)
-        updateTrailingColumn()
+        // What follows the last column depends on that column only.
+        if reloadedLast { updateTrailingColumn() }
     }
 
     func select(_ urls: [URL]) {
@@ -176,6 +181,9 @@ final class ColumnBrowserViewController: NSViewController, FileBrowser {
         removeColumns(from: 1)
         updateTrailingColumn()
         setFocused(0)
+        // The focused column is still the first one, but it shows another folder now:
+        // setFocused only reports a change of column.
+        delegate?.browser(self, didMoveTo: columns[0].directory)
         return true
     }
 
@@ -318,238 +326,6 @@ final class ColumnBrowserViewController: NSViewController, FileBrowser {
         guard abs(x - current) > 0.5 else { return }
         scrollView.contentView.scroll(to: NSPoint(x: x, y: 0))
         scrollView.reflectScrolledClipView(scrollView.contentView)
-    }
-}
-
-/// One column: a folder's contents in a single-column table.
-@MainActor
-final class FolderColumn: NSObject, NSTableViewDataSource, NSTableViewDelegate {
-    let directory: URL
-    private(set) var items: [FileItem] = []
-    private(set) var loadError: Error?
-    var index = 0
-    var onSelectionChange: (() -> Void)?
-    var onFocus: (() -> Void)?
-    var keyHandler: ((NSEvent) -> Bool)?
-    var onDoubleClick: (([FileItem]) -> Void)?
-    var menuProvider: (([FileItem]) -> NSMenu?)?
-    var onDrop: (([URL], URL, TransferKind) -> Void)?
-    var onDragEnded: (() -> Void)?
-
-    let tableView = FileTableView()
-    let container = NSView()
-    private let scrollView = NSScrollView()
-    private let message = NSTextField(wrappingLabelWithString: "")
-    private let preferences: Preferences
-    private var rowSize: RowSize
-    private var suppressNotify = false
-
-    init(directory: URL, options: ListingOptions, preferences: Preferences, rowSize: RowSize) {
-        self.directory = directory
-        self.preferences = preferences
-        self.rowSize = rowSize
-        super.init()
-        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name"))
-        column.resizingMask = .autoresizingMask
-        tableView.addTableColumn(column)
-        tableView.headerView = nil
-        tableView.style = .inset
-        tableView.allowsMultipleSelection = true
-        tableView.allowsTypeSelect = true
-        tableView.rowHeight = rowSize.rowHeight
-        tableView.intercellSpacing = NSSize(width: 0, height: 0)
-        tableView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
-        tableView.dataSource = self
-        tableView.delegate = self
-        tableView.target = self
-        tableView.doubleAction = #selector(doubleClicked(_:))
-        tableView.onFocus = { [weak self] in self?.onFocus?() }
-        tableView.keyHandler = { [weak self] e in self?.keyHandler?(e) ?? false }
-        tableView.menuProvider = { [weak self] rows in
-            guard let self else { return nil }
-            return self.menuProvider?(rows.compactMap { $0 < self.items.count ? self.items[$0] : nil })
-        }
-
-        FileDragDrop.configure(tableView)
-        scrollView.documentView = tableView
-        scrollView.hasVerticalScroller = true
-        scrollView.autohidesScrollers = true
-        scrollView.drawsBackground = false
-
-        message.textColor = .tertiaryLabelColor
-        message.alignment = .center
-        message.font = .systemFont(ofSize: 11)
-        message.isHidden = true
-
-        let divider = NSBox()
-        divider.boxType = .separator
-        for v in [scrollView, message, divider] as [NSView] {
-            v.translatesAutoresizingMaskIntoConstraints = false
-            container.addSubview(v)
-        }
-        NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: container.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: divider.leadingAnchor),
-            divider.topAnchor.constraint(equalTo: container.topAnchor),
-            divider.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            divider.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            divider.widthAnchor.constraint(equalToConstant: 1),
-            message.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor),
-            message.centerYAnchor.constraint(equalTo: scrollView.centerYAnchor),
-            message.widthAnchor.constraint(equalTo: scrollView.widthAnchor, constant: -24),
-        ])
-        load(options: options)
-    }
-
-    var selectedItems: [FileItem] {
-        tableView.selectedRowIndexes.compactMap { $0 < items.count ? items[$0] : nil }
-    }
-
-    func reload(options: ListingOptions) {
-        let selected = selectedItems.map(\.url)
-        let origin = scrollView.contentView.bounds.origin
-        load(options: options)
-        select(selected, notify: false)
-        scrollView.contentView.scroll(to: origin)
-    }
-
-    private func load(options: ListingOptions) {
-        do {
-            items = try DirectoryListing.load(directory, options: options)
-            loadError = nil
-        } catch {
-            items = []
-            loadError = error
-        }
-        suppressNotify = true
-        tableView.reloadData()
-        suppressNotify = false
-        if let loadError {
-            message.stringValue = BrowserMessages.loadFailure(loadError, folder: directory)
-            message.isHidden = false
-        } else if items.isEmpty {
-            message.stringValue = options.filter.isEmpty ? "Empty folder" : "No matches"
-            message.isHidden = false
-        } else {
-            message.isHidden = true
-        }
-    }
-
-    func select(_ urls: [URL], notify: Bool) {
-        let wanted = Set(urls.map { $0.standardizedFileURL.path })
-        let rows = IndexSet(items.indices.filter { wanted.contains(items[$0].url.standardizedFileURL.path) })
-        select(rows: rows, notify: notify)
-    }
-
-    func select(rows: IndexSet, notify: Bool) {
-        suppressNotify = !notify
-        tableView.selectRowIndexes(rows, byExtendingSelection: false)
-        suppressNotify = false
-        if let first = rows.first { tableView.scrollRowToVisible(first) }
-    }
-
-    func apply(rowSize: RowSize) {
-        self.rowSize = rowSize
-        tableView.rowHeight = rowSize.rowHeight
-        tableView.reloadData()
-    }
-
-    @objc private func doubleClicked(_ sender: Any?) {
-        openRow(tableView.clickedRow)
-    }
-
-    func openRow(_ row: Int) {
-        let chosen = itemsForDoubleClick(row: row, items: items, selection: tableView.selectedRowIndexes)
-        if !chosen.isEmpty { onDoubleClick?(chosen) }
-    }
-
-    // MARK: Table
-
-    func numberOfRows(in tableView: NSTableView) -> Int { items.count }
-
-    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { FileRowView() }
-
-    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let id = NSUserInterfaceItemIdentifier("columnCell")
-        let cell = tableView.makeView(withIdentifier: id, owner: nil) as? ColumnCellView ?? {
-            let c = ColumnCellView(frame: .zero); c.identifier = id; return c
-        }()
-        cell.configure(items[row], size: rowSize, showExtension: preferences.showAllExtensions)
-        return cell
-    }
-
-    func tableViewSelectionDidChange(_ notification: Notification) {
-        if !suppressNotify { onSelectionChange?() }
-    }
-
-    func tableView(_ tableView: NSTableView, typeSelectStringFor tableColumn: NSTableColumn?, row: Int) -> String? {
-        items[row].name
-    }
-
-    // MARK: Drag & drop
-
-    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
-        row < items.count ? FileDragDrop.writer(for: items[row]) : nil
-    }
-
-    func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
-                   proposedDropOperation op: NSTableView.DropOperation) -> NSDragOperation {
-        FileDragDrop.validate(tableView, info: info, row: row, operation: op, items: items, directory: directory)
-    }
-
-    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation op: NSTableView.DropOperation) -> Bool {
-        let urls = FileDragDrop.fileURLs(info)
-        guard !urls.isEmpty else { return false }
-        let dest = FileDragDrop.destination(row: row, operation: op, items: items, directory: directory)
-        onDrop?(urls, dest, FileDragDrop.kind(info, sources: urls, destination: dest))
-        return true
-    }
-
-    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
-        onDragEnded?()
-    }
-}
-
-/// Name cell with a chevron for folders.
-final class ColumnCellView: NSTableCellView, NameEditingCell {
-    private let name = NameCellView(frame: .zero)
-    var nameLabel: NSTextField { name.label }
-    private let chevron = NSImageView()
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        chevron.image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: nil)
-        chevron.symbolConfiguration = .init(pointSize: 10, weight: .semibold)
-        chevron.contentTintColor = .tertiaryLabelColor
-        for v in [name, chevron] {
-            v.translatesAutoresizingMaskIntoConstraints = false
-            addSubview(v)
-        }
-        textField = name.label
-        imageView = name.icon
-        NSLayoutConstraint.activate([
-            name.leadingAnchor.constraint(equalTo: leadingAnchor),
-            name.topAnchor.constraint(equalTo: topAnchor),
-            name.bottomAnchor.constraint(equalTo: bottomAnchor),
-            name.trailingAnchor.constraint(equalTo: chevron.leadingAnchor, constant: -2),
-            chevron.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
-            chevron.centerYAnchor.constraint(equalTo: centerYAnchor),
-            chevron.widthAnchor.constraint(equalToConstant: 10),
-        ])
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    func configure(_ item: FileItem, size: RowSize, showExtension: Bool) {
-        name.configure(item, size: size, showExtension: showExtension)
-        chevron.isHidden = !item.isContainer
-    }
-
-    override var backgroundStyle: NSView.BackgroundStyle {
-        didSet { chevron.contentTintColor = backgroundStyle == .emphasized ? .alternateSelectedControlTextColor : .tertiaryLabelColor }
     }
 }
 

@@ -1,69 +1,5 @@
 import Foundation
 
-/// How to undo a file operation. Undoing a record returns the record that redoes it.
-public indirect enum UndoRecord: Equatable, Sendable {
-    /// Items that didn't exist before (copies, new folders). Undo: move them to the Trash.
-    case created([URL])
-    /// Items moved to the Trash: (original location, location in the Trash). Undo: put back.
-    case trashed([TrashedItem])
-    /// Items moved. Undo: move each back.
-    case moved([MovedItem])
-    case renamed(from: URL, to: URL)
-    /// Several steps; undone in reverse order.
-    case group([UndoRecord])
-
-    public var isEmpty: Bool {
-        switch self {
-        case .created(let u): return u.isEmpty
-        case .trashed(let t): return t.isEmpty
-        case .moved(let m): return m.isEmpty
-        case .renamed: return false
-        case .group(let g): return g.allSatisfy(\.isEmpty)
-        }
-    }
-}
-
-public struct TrashedItem: Equatable, Sendable {
-    public let original: URL
-    public let inTrash: URL
-    public init(original: URL, inTrash: URL) { self.original = original; self.inTrash = inTrash }
-}
-
-public struct MovedItem: Equatable, Sendable {
-    public let from: URL
-    public let to: URL
-    public init(from: URL, to: URL) { self.from = from; self.to = to }
-}
-
-/// Moves items to a trash. The system one in the app; a folder in tests.
-public protocol Trashing: Sendable {
-    /// Returns where the item ended up.
-    func trash(_ url: URL) throws -> URL
-}
-
-public struct SystemTrash: Trashing {
-    public init() {}
-    public func trash(_ url: URL) throws -> URL {
-        var result: NSURL?
-        try FileManager.default.trashItem(at: url, resultingItemURL: &result)
-        return (result as URL?) ?? url
-    }
-}
-
-/// A plain folder standing in for the Trash (tests, previews).
-public struct FolderTrash: Trashing {
-    public let folder: URL
-    public init(folder: URL) { self.folder = folder }
-    public func trash(_ url: URL) throws -> URL {
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let name = UniqueName.numberedName(for: url.lastPathComponent, isFolder: url.hasDirectoryPath,
-                                           taken: UniqueName.takenIn(folder))
-        let dest = folder.appendingPathComponent(name)
-        try FileManager.default.moveItem(at: url, to: dest)
-        return dest
-    }
-}
-
 public enum FileOperationError: LocalizedError, Equatable {
     case invalidName(String)
     case nameTaken(String)
@@ -160,9 +96,11 @@ public struct FileOperations: Sendable {
     /// "x copy", "x copy 2" next to each item (APFS clones when possible).
     public func duplicate(_ urls: [URL]) throws -> ([URL], UndoRecord) {
         var made: [URL] = []
+        let names = UniqueName.TakenNames()
         for url in urls {
             let dir = url.deletingLastPathComponent()
-            let name = UniqueName.copyName(for: url.lastPathComponent, isFolder: url.isDirectoryOnDisk, taken: UniqueName.takenIn(dir))
+            let name = UniqueName.copyName(for: url.lastPathComponent, isFolder: UniqueName.isPlainFolder(url), taken: names.taken(in: dir))
+            names.add(name, in: dir)
             let dest = dir.appendingPathComponent(name)
             do {
                 try CopyEngine.copy(url, to: dest, allowClone: true, progress: nil)
@@ -179,12 +117,20 @@ public struct FileOperations: Sendable {
     /// Finder aliases ("x alias") next to each item.
     public func makeAlias(_ urls: [URL]) throws -> ([URL], UndoRecord) {
         var made: [URL] = []
+        let names = UniqueName.TakenNames()
         for url in urls {
             let dir = url.deletingLastPathComponent()
-            let name = UniqueName.numberedName(for: url.lastPathComponent + " alias", isFolder: true, taken: UniqueName.takenIn(dir))
+            let name = UniqueName.numberedName(for: url.lastPathComponent + " alias", isFolder: true, taken: names.taken(in: dir))
+            names.add(name, in: dir)
             let dest = dir.appendingPathComponent(name)
-            let data = try url.bookmarkData(options: .suitableForBookmarkFile, includingResourceValuesForKeys: nil, relativeTo: nil)
-            try URL.writeBookmarkData(data, to: dest)
+            do {
+                let data = try url.bookmarkData(options: .suitableForBookmarkFile, includingResourceValuesForKeys: nil, relativeTo: nil)
+                try URL.writeBookmarkData(data, to: dest)
+            } catch {
+                try? fm.removeItem(at: dest) // no half-written alias
+                if !made.isEmpty { throw PartialFailure(error: error, undo: .created(made)) }
+                throw error
+            }
             made.append(dest)
         }
         return (made, .created(made))
@@ -206,7 +152,8 @@ public struct FileOperations: Sendable {
                     try fm.createDirectory(at: dir, withIntermediateDirectories: true)
                     var dest = item.original
                     if FileIdentity.exists(dest) {
-                        dest = dir.appendingPathComponent(UniqueName.numberedName(for: dest.lastPathComponent, isFolder: dest.hasDirectoryPath, taken: UniqueName.takenIn(dir)))
+                        dest = dir.appendingPathComponent(UniqueName.numberedName(
+                            for: dest.lastPathComponent, isFolder: UniqueName.isPlainFolder(item.inTrash), taken: UniqueName.takenIn(dir)))
                     }
                     try fm.moveItem(at: item.inTrash, to: dest)
                     restored.append(dest)
@@ -243,30 +190,5 @@ public struct FileOperations: Sendable {
             }
             return .group(redo)
         }
-    }
-}
-
-/// Some items were processed before an error; `undo` covers those.
-public struct PartialFailure: Error, LocalizedError {
-    public let error: Error
-    public let undo: UndoRecord
-    public var errorDescription: String? { error.localizedDescription }
-}
-
-extension URL {
-    /// Real directory test (URL.hasDirectoryPath only reflects a trailing slash).
-    public var isDirectoryOnDisk: Bool {
-        var isDir: ObjCBool = false
-        return FileManager.default.fileExists(atPath: path, isDirectory: &isDir) && isDir.boolValue
-    }
-
-    /// True if `self` is `other` or inside it. `other` itself isn't followed if it's a
-    /// symlink: a link is copied or moved as a link, so copying it into its target is fine.
-    public func isInside(_ other: URL) -> Bool {
-        let a = standardizedFileURL.resolvingSymlinksInPath().path.lowercased()
-        let o = other.standardizedFileURL
-        let bPath = o.path == "/" ? "/" : o.deletingLastPathComponent().resolvingSymlinksInPath().appendingPathComponent(o.lastPathComponent).path
-        let b = bPath.lowercased()
-        return a == b || a.hasPrefix(b.hasSuffix("/") ? b : b + "/")
     }
 }

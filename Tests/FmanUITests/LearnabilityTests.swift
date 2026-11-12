@@ -31,6 +31,30 @@ import Testing
         #expect(KeyHintBar.displayKey(.copyToOtherPane, keyMap: map) == "⌘K")
     }
 
+    /// The sort button's tooltip names the keys as they are bound now, not the defaults.
+    @Test func sortTooltipFollowsRebinding() throws {
+        #expect(SortButton.toolTip(keyMap: KeyMap()) == "Sort order (⌃⌥⌘1 Name, ⌃⌥⌘2 Kind, ⌃⌥⌘5 Date Modified, ⌃⌥⌘6 Size)")
+        var none = KeyMap()
+        for id in [CommandID.sortByName, .sortByKind, .sortByModified, .sortBySize] { none.set([], for: id) }
+        #expect(SortButton.toolTip(keyMap: none) == "Sort order")
+
+        // A window whose environment reads its key bindings from a scratch file.
+        let overrides = fx.url.appendingPathComponent("keybindings.json")
+        let base = testEnvironment(trash: fx.url.appendingPathComponent(".T"))
+        let env = AppEnvironment(preferences: .ephemeral(), opener: base.opener, overridesURL: overrides,
+                                 operations: base.operations, shellSetup: base.shellSetup)
+        let wc = makeWindow([fx.url, fx.url], env: env)
+        let button = wc.paneGroup.panes[1].sortButton
+        #expect(button.toolTip == SortButton.toolTip(keyMap: KeyMap()))
+
+        try Data(#"{ "view.sortByName": "cmd+k", "view.sortByKind": null, "view.sortByCreated": "ctrl+opt+cmd+7" }"#.utf8).write(to: overrides)
+        env.reloadKeyMap()
+        #expect(button.toolTip == "Sort order (⌘K Name, ⌃⌥⌘5 Date Modified, ⌃⌥⌘7 Date Created, ⌃⌥⌘6 Size)")
+        // A pane added later shows them too.
+        wc.perform(.addPane)
+        #expect(wc.paneGroup.panes[2].sortButton.toolTip == button.toolTip)
+    }
+
     @Test func paletteFindsAndRunsCommands() throws {
         let wc = makeWindow([fx.url, fx.url])
         wc.perform(.commandPalette)

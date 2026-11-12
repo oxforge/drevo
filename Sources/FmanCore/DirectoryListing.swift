@@ -59,7 +59,7 @@ public enum DirectoryListing {
     /// Uses readdir + lstat with kinds cached per extension: asking Launch Services for
     /// every file (kind, type, localized name) costs ~100 µs each, which is a full second
     /// for a 10k-item folder.
-    public static func entries(of url: URL, fileManager: FileManager = .default) throws -> [FileItem] {
+    public static func entries(of url: URL) throws -> [FileItem] {
         let dirPath = url.path
         guard let dir = opendir(dirPath) else {
             let code = errno
@@ -68,8 +68,6 @@ public enum DirectoryListing {
                           userInfo: [NSFilePathErrorKey: dirPath, NSUnderlyingErrorKey: NSError(domain: NSPOSIXErrorDomain, code: Int(code))])
         }
         defer { closedir(dir) }
-        var parent = stat()
-        let parentDevice: dev_t? = lstat(dirPath, &parent) == 0 ? parent.st_dev : nil
         var items: [FileItem] = []
         let base = dirPath.hasSuffix("/") ? dirPath : dirPath + "/"
         while let entry = readdir(dir) {
@@ -80,13 +78,13 @@ public enum DirectoryListing {
             let path = base + name
             var st = stat()
             guard lstat(path, &st) == 0 else { continue }
-            items.append(FileItem(path: path, name: name, stat: st, parentDevice: parentDevice))
+            items.append(FileItem(path: path, name: name, stat: st))
         }
         return items
     }
 
-    public static func load(_ url: URL, options: ListingOptions, fileManager: FileManager = .default) throws -> [FileItem] {
-        apply(options, to: try entries(of: url, fileManager: fileManager))
+    public static func load(_ url: URL, options: ListingOptions) throws -> [FileItem] {
+        apply(options, to: try entries(of: url))
     }
 
     public static func apply(_ options: ListingOptions, to items: [FileItem]) -> [FileItem] {

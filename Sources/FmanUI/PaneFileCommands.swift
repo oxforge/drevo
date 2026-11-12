@@ -50,6 +50,23 @@ extension PaneViewController {
         if !urls.isEmpty { browser.select(urls) }
     }
 
+    /// Re-reads the folder and selects those of an operation's `results` that landed in
+    /// it. The operation may have named this folder by another path (through a symlink,
+    /// /tmp for /private/tmp, another letter case), so the folders are compared by
+    /// identity and the results are looked up under this pane's own path.
+    func reload(selectingResults results: [URL]) {
+        let here = currentDirectory
+        var isHere: [String: Bool] = [:]
+        let landed = results.filter { url in
+            let folder = url.deletingLastPathComponent()
+            if let known = isHere[folder.path] { return known }
+            let same = FileIdentity.sameItem(folder, here)
+            isHere[folder.path] = same
+            return same
+        }
+        reload(selecting: landed.map { here.appendingPathComponent($0.lastPathComponent) })
+    }
+
     // MARK: Rename / create
 
     func renameSelection() {

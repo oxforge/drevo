@@ -124,20 +124,28 @@ final class FileListViewController: NSViewController, FileBrowser, NSTableViewDa
         tableView.scrollRowToVisible(max(0, tableView.selectedRow))
     }
 
-    func reload(options newOptions: ListingOptions) {
+    /// One folder on screen, so `changedFolders` makes no difference here.
+    func reload(options newOptions: ListingOptions, changedFolders: Set<String>?) {
         let sortChanged = newOptions.sort != options.sort
+        // A new filter starts over at its first match (the pane selects it).
+        let sameFilter = newOptions.filter == options.filter
         options = newOptions
         _ = view
         if sortChanged { applySortIndicator() }
         let selected = selectedItems.map(\.url)
-        let cursor = tableView.cursorRow >= 0 && tableView.cursorRow < visibleItems.count ? visibleItems[tableView.cursorRow].url : nil
+        let firstSelectedRow = tableView.selectedRowIndexes.first
         let visibleRect = scrollView.contentView.bounds
         load(selecting: nil)
         select(selected)
-        if selectedItems.isEmpty, let cursor, let i = visibleItems.firstIndex(where: { $0.url == cursor }) {
-            tableView.selectRowIndexes(IndexSet(integer: i), byExtendingSelection: false)
+        // None of the selected items are left (moved away, deleted): the row that took
+        // the first one's place gets the cursor, so the place in the list isn't lost.
+        var cursor: Int?
+        if sameFilter, let firstSelectedRow, selectedItems.isEmpty, !visibleItems.isEmpty {
+            cursor = min(firstSelectedRow, visibleItems.count - 1)
+            tableView.selectRowIndexes(IndexSet(integer: cursor!), byExtendingSelection: false)
         }
         scrollView.contentView.scroll(to: visibleRect.origin)
+        if let cursor { tableView.scrollRowToVisible(cursor) }
     }
 
     func select(_ urls: [URL]) {
@@ -218,7 +226,6 @@ final class FileListViewController: NSViewController, FileBrowser, NSTableViewDa
         }
     }
 
-    var sortOrder: FileSort { options.sort }
     var onSortChange: ((FileSort) -> Void)?
 
     // MARK: Actions

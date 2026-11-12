@@ -28,11 +28,21 @@ enum RowSize: Int, CaseIterable {
     var title: String { ["Small", "Medium", "Large"][rawValue] }
 }
 
-/// App settings. Changing any value posts `Preferences.didChange` with the key in userInfo.
+/// App settings. Changing a value posts `Preferences.didChange` with its `Key` in
+/// userInfo, except for the two that are saved state rather than settings (`windowState`,
+/// `commandHistory`).
 @MainActor
 final class Preferences {
+    /// The names the values are stored under.
+    enum Key: String {
+        case showHidden, foldersFirst, returnRenames, confirmTransfers, showKeyHints, showStatusBar
+        case showCommandLine, showSidebar, showAllExtensions, relativeDates, restoreState, interactiveShell
+        case rowSize, defaultViewMode, paneCount, terminalAppPath, editorAppPath
+        case windowState, commandHistory, favorites
+    }
+
     nonisolated static let didChange = Notification.Name("fman.preferencesDidChange")
-    /// userInfo key naming the setting that changed; read in notification callbacks.
+    /// userInfo key of the `Key` that changed; read in notification callbacks.
     nonisolated static let changedKey = "key"
 
     private let store: SettingsStore
@@ -46,60 +56,61 @@ final class Preferences {
 
     // MARK: Values
 
-    var showHidden: Bool { get { bool("showHidden", false) } set { set(newValue, "showHidden") } }
-    var foldersFirst: Bool { get { bool("foldersFirst", true) } set { set(newValue, "foldersFirst") } }
-    var returnRenames: Bool { get { bool("returnRenames", false) } set { set(newValue, "returnRenames") } }
-    var confirmTransfers: Bool { get { bool("confirmTransfers", true) } set { set(newValue, "confirmTransfers") } }
-    var showKeyHints: Bool { get { bool("showKeyHints", true) } set { set(newValue, "showKeyHints") } }
-    var showStatusBar: Bool { get { bool("showStatusBar", true) } set { set(newValue, "showStatusBar") } }
-    var showCommandLine: Bool { get { bool("showCommandLine", true) } set { set(newValue, "showCommandLine") } }
-    var showSidebar: Bool { get { bool("showSidebar", true) } set { set(newValue, "showSidebar") } }
-    var showAllExtensions: Bool { get { bool("showAllExtensions", true) } set { set(newValue, "showAllExtensions") } }
-    var relativeDates: Bool { get { bool("relativeDates", true) } set { set(newValue, "relativeDates") } }
-    var restoreState: Bool { get { bool("restoreState", true) } set { set(newValue, "restoreState") } }
-    var interactiveShell: Bool { get { bool("interactiveShell", true) } set { set(newValue, "interactiveShell") } }
+    var showHidden: Bool { get { bool(.showHidden, false) } set { set(newValue, .showHidden) } }
+    var foldersFirst: Bool { get { bool(.foldersFirst, true) } set { set(newValue, .foldersFirst) } }
+    var returnRenames: Bool { get { bool(.returnRenames, false) } set { set(newValue, .returnRenames) } }
+    var confirmTransfers: Bool { get { bool(.confirmTransfers, true) } set { set(newValue, .confirmTransfers) } }
+    var showKeyHints: Bool { get { bool(.showKeyHints, true) } set { set(newValue, .showKeyHints) } }
+    var showStatusBar: Bool { get { bool(.showStatusBar, true) } set { set(newValue, .showStatusBar) } }
+    var showCommandLine: Bool { get { bool(.showCommandLine, true) } set { set(newValue, .showCommandLine) } }
+    var showSidebar: Bool { get { bool(.showSidebar, true) } set { set(newValue, .showSidebar) } }
+    var showAllExtensions: Bool { get { bool(.showAllExtensions, true) } set { set(newValue, .showAllExtensions) } }
+    var relativeDates: Bool { get { bool(.relativeDates, true) } set { set(newValue, .relativeDates) } }
+    var restoreState: Bool { get { bool(.restoreState, true) } set { set(newValue, .restoreState) } }
+    var interactiveShell: Bool { get { bool(.interactiveShell, true) } set { set(newValue, .interactiveShell) } }
 
     var rowSize: RowSize {
-        get { RowSize(rawValue: (store.object(forKey: "rowSize") as? Int) ?? 1) ?? .medium }
-        set { set(newValue.rawValue, "rowSize") }
+        get { RowSize(rawValue: (value(.rowSize) as? Int) ?? 1) ?? .medium }
+        set { set(newValue.rawValue, .rowSize) }
     }
 
     var defaultViewMode: ViewMode {
-        get { ViewMode(rawValue: (store.object(forKey: "defaultViewMode") as? String) ?? "") ?? .columns }
-        set { set(newValue.rawValue, "defaultViewMode") }
+        get { ViewMode(rawValue: (value(.defaultViewMode) as? String) ?? "") ?? .columns }
+        set { set(newValue.rawValue, .defaultViewMode) }
     }
 
     var paneCount: Int {
-        get { min(4, max(1, (store.object(forKey: "paneCount") as? Int) ?? 2)) }
-        set { set(min(4, max(1, newValue)), "paneCount") }
+        get { min(4, max(1, (value(.paneCount) as? Int) ?? 2)) }
+        set { set(min(4, max(1, newValue)), .paneCount) }
     }
 
     /// Path of the terminal app for "Open in Terminal"; nil = Terminal.app.
     var terminalAppPath: String? {
-        get { store.object(forKey: "terminalAppPath") as? String }
-        set { set(newValue, "terminalAppPath") }
+        get { value(.terminalAppPath) as? String }
+        set { set(newValue, .terminalAppPath) }
     }
 
     /// Path of the editor app for F4; nil = the default app for plain text.
     var editorAppPath: String? {
-        get { store.object(forKey: "editorAppPath") as? String }
-        set { set(newValue, "editorAppPath") }
+        get { value(.editorAppPath) as? String }
+        set { set(newValue, .editorAppPath) }
     }
 
-    /// Opaque saved window/pane state (see `WindowState`).
+    /// Opaque saved window/pane state (see `WindowState`). Saved without a notification.
     var savedWindowState: Data? {
-        get { store.object(forKey: "windowState") as? Data }
-        set { store.set(newValue, forKey: "windowState") }
+        get { value(.windowState) as? Data }
+        set { store.set(newValue, forKey: Key.windowState.rawValue) }
     }
 
+    /// Saved without a notification.
     var commandHistory: [String] {
-        get { store.object(forKey: "commandHistory") as? [String] ?? [] }
-        set { store.set(Array(newValue.suffix(200)), forKey: "commandHistory") }
+        get { value(.commandHistory) as? [String] ?? [] }
+        set { store.set(Array(newValue.suffix(200)), forKey: Key.commandHistory.rawValue) }
     }
 
     var favoritePaths: [String]? {
-        get { store.object(forKey: "favorites") as? [String] }
-        set { set(newValue, "favorites") }
+        get { value(.favorites) as? [String] }
+        set { set(newValue, .favorites) }
     }
 
     // MARK: Derived
@@ -112,12 +123,16 @@ final class Preferences {
 
     // MARK: Storage helpers
 
-    private func bool(_ key: String, _ fallback: Bool) -> Bool {
-        (store.object(forKey: key) as? Bool) ?? fallback
+    private func value(_ key: Key) -> Any? {
+        store.object(forKey: key.rawValue)
     }
 
-    private func set(_ value: Any?, _ key: String) {
-        store.set(value, forKey: key)
+    private func bool(_ key: Key, _ fallback: Bool) -> Bool {
+        (value(key) as? Bool) ?? fallback
+    }
+
+    private func set(_ value: Any?, _ key: Key) {
+        store.set(value, forKey: key.rawValue)
         NotificationCenter.default.post(name: Self.didChange, object: self, userInfo: [Self.changedKey: key])
     }
 }

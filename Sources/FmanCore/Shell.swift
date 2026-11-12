@@ -26,25 +26,6 @@ public enum UserShell {
     }
 }
 
-/// Strips terminal escape sequences from command output for plain display.
-public enum ANSI {
-    private static let patterns = [
-        #"\x1B\][^\x07\x1B]*(?:\x07|\x1B\\)"#, // OSC … BEL/ST
-        #"\x1B\[[0-?]*[ -/]*[@-~]"#,               // CSI
-        #"\x1B[@-Z\\-_]"#,                          // other 2-byte escapes
-    ]
-
-    public static func strip(_ s: String) -> String {
-        guard s.contains("\u{1B}") || s.contains("\r") else { return s }
-        var out = s
-        for p in patterns {
-            out = out.replacingOccurrences(of: p, with: "", options: .regularExpression)
-        }
-        // Lone carriage returns (progress bars) would garble a text view; keep line breaks only.
-        return out.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "")
-    }
-}
-
 /// Runs one command line through a shell in a folder, in its own process group,
 /// streaming stdout/stderr. Callbacks arrive on a background queue.
 public final class ShellCommand: @unchecked Sendable {
@@ -59,12 +40,21 @@ public final class ShellCommand: @unchecked Sendable {
     /// Exit status, or nil if a signal ended it (with the signal number).
     public var onExit: ((_ status: Int32?, _ signal: Int32?) -> Void)?
 
+    /// How long output may keep arriving after the shell itself has exited. A background
+    /// process the command left behind (`server &`) holds the pipes open; the command is
+    /// reported as finished after this instead of when that process ends.
+    public var drainWindow: Double = 0.1
+
     private let lock = NSLock()
     private var pid: pid_t = 0
     private var finished = false
     private let group = DispatchGroup()
     private let exited = DispatchSemaphore(value: 0)
     private var sources: [DispatchSourceProtocol] = []
+    /// Output, exit and timeouts of this command, in order. A queue of its own, not the
+    /// shared global one: that one hands out no threads while callers of `waitUntilExit`
+    /// block every thread of Swift's concurrency pool (parallel tests do).
+    private let queue = DispatchQueue(label: "tech.oxforge.fman.shell-command")
 
     public init(command: String, directory: URL, shell: String = UserShell.loginShell(), flags: [String] = UserShell.flags(interactive: true)) {
         self.command = command
@@ -104,11 +94,16 @@ public final class ShellCommand: @unchecked Sendable {
         var attr: posix_spawnattr_t?
         posix_spawnattr_init(&attr)
         defer { posix_spawnattr_destroy(&attr) }
-        posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGDEF))
+        posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK))
         posix_spawnattr_setpgroup(&attr, 0)
         var defaults = sigset_t()
         sigfillset(&defaults)
         posix_spawnattr_setsigdefault(&attr, &defaults)
+        // Nothing blocked either: a worker thread that starts a command blocks most signals,
+        // and the command would inherit that and never see Ctrl-C.
+        var unblocked = sigset_t()
+        sigemptyset(&unblocked)
+        posix_spawnattr_setsigmask(&attr, &unblocked)
 
         var actions: posix_spawn_file_actions_t?
         posix_spawn_file_actions_init(&actions)
@@ -142,10 +137,11 @@ public final class ShellCommand: @unchecked Sendable {
         }
         lock.lock(); pid = child; lock.unlock()
 
-        read(outPipe[0], isError: false)
-        read(errPipe[0], isError: true)
+        let readers = [read(outPipe[0], isError: false), read(errPipe[0], isError: true)]
+        let drainWindow = self.drainWindow
+        let queue = self.queue
         group.enter()
-        let exitSource = DispatchSource.makeProcessSource(identifier: child, eventMask: .exit, queue: .global())
+        let exitSource = DispatchSource.makeProcessSource(identifier: child, eventMask: .exit, queue: queue)
         let reaped = Reaped()
         // Reap exactly once, whether the exit event or the immediate check sees it first.
         let reap: (Int32) -> Void = { [weak self] options in
@@ -154,13 +150,18 @@ public final class ShellCommand: @unchecked Sendable {
             reaped.status = st
             exitSource.cancel()
             self?.group.leave()
+            // The readers normally reach end-of-file at once. If something still holds the
+            // pipes after the window, stop reading (cancelling twice is harmless).
+            queue.asyncAfter(deadline: .now() + drainWindow) {
+                readers.forEach { $0.cancel() }
+            }
         }
         exitSource.setEventHandler { reap(0) }
         sources.append(exitSource)
         exitSource.resume()
         reap(WNOHANG)
 
-        group.notify(queue: .global()) { [weak self] in
+        group.notify(queue: queue) { [weak self] in
             guard let self else { return }
             self.lock.lock(); self.finished = true; self.lock.unlock()
             let status = reaped.status
@@ -172,21 +173,28 @@ public final class ShellCommand: @unchecked Sendable {
         }
     }
 
-    private func read(_ fd: Int32, isError: Bool) {
+    private func read(_ fd: Int32, isError: Bool) -> DispatchSourceRead {
         group.enter()
-        let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: .global())
+        let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
         var decoder = UTF8Stream()
-        source.setEventHandler { [weak self] in
-            var buffer = [UInt8](repeating: 0, count: 16384)
+        var buffer = [UInt8](repeating: 0, count: 16384)
+        // One read; false at end-of-file (or when nothing is waiting, once non-blocking).
+        let readChunk: () -> Bool = { [weak self] in
             let n = Darwin.read(fd, &buffer, buffer.count)
-            if n > 0 {
-                let text = decoder.append(Array(buffer[0..<n]))
-                if !text.isEmpty { self?.onOutput?(text, isError) }
-            } else {
-                source.cancel()
-            }
+            guard n > 0 else { return false }
+            let text = decoder.append(Array(buffer[0..<n]))
+            if !text.isEmpty { self?.onOutput?(text, isError) }
+            return true
+        }
+        source.setEventHandler {
+            if !readChunk() { source.cancel() }
         }
         source.setCancelHandler { [weak self] in
+            // Cancelled before end-of-file (the drain window ran out): what is already in
+            // the pipe still belongs to the command. Bounded, in case the writer never stops.
+            _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
+            var chunks = 0
+            while chunks < 64, readChunk() { chunks += 1 }
             let rest = decoder.flush()
             if !rest.isEmpty { self?.onOutput?(rest, isError) }
             close(fd)
@@ -194,6 +202,7 @@ public final class ShellCommand: @unchecked Sendable {
         }
         sources.append(source)
         source.resume()
+        return source
     }
 
     /// Ctrl-C for the whole process group; a hard kill follows if it's still running.
@@ -201,10 +210,23 @@ public final class ShellCommand: @unchecked Sendable {
         let p = processID
         guard p > 0, isRunning else { return }
         kill(-p, SIGINT)
-        DispatchQueue.global().asyncAfter(deadline: .now() + seconds) { [weak self] in
-            guard let self, self.isRunning else { return }
+        // Holds the command until then, so the fallback also fires when its owner (a
+        // closed window) is gone.
+        queue.asyncAfter(deadline: .now() + seconds) { [self] in
+            guard isRunning else { return }
             kill(-p, SIGKILL)
         }
+    }
+
+    /// Ends the process group for certain before returning (quitting the app, where
+    /// `interrupt`'s later fallback would never run): Ctrl-C, up to `grace` seconds for
+    /// the command to exit, then a hard kill.
+    public func terminate(grace: Double = 0.3) {
+        let p = processID
+        guard p > 0, isRunning else { return }
+        kill(-p, SIGINT)
+        if waitUntilExit(timeout: grace) { return }
+        kill(-p, SIGKILL)
     }
 
     /// Blocks until the command ends (tests and scripts).

@@ -1,84 +1,6 @@
 import AppKit
 import FmanCore
 
-/// Content area right of the sidebar: panes over a collapsible console, then the bars
-/// (operations, command line, key hints).
-@MainActor
-final class WorkspaceViewController: NSViewController, NSSplitViewDelegate {
-    let paneGroup: PaneGroupViewController
-    let console = ConsoleViewController()
-    let bottomStack = NSStackView()
-    private let split = NSSplitView()
-    private var consoleHeight: CGFloat = 220
-
-    init(paneGroup: PaneGroupViewController) {
-        self.paneGroup = paneGroup
-        super.init(nibName: nil, bundle: nil)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func loadView() {
-        let root = NSView()
-        addChild(paneGroup)
-        addChild(console)
-        split.isVertical = false
-        split.dividerStyle = .thin
-        split.delegate = self
-        split.addArrangedSubview(paneGroup.view)
-        split.addArrangedSubview(console.view)
-        split.setHoldingPriority(.defaultLow, forSubviewAt: 0)
-        split.setHoldingPriority(NSLayoutConstraint.Priority(rawValue: 260), forSubviewAt: 1)
-        console.view.isHidden = true
-        bottomStack.orientation = .vertical
-        bottomStack.spacing = 0
-        bottomStack.alignment = .leading
-        bottomStack.distribution = .fill
-        for v in [split, bottomStack] {
-            v.translatesAutoresizingMaskIntoConstraints = false
-            root.addSubview(v)
-        }
-        NSLayoutConstraint.activate([
-            split.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor),
-            split.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            split.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            split.bottomAnchor.constraint(equalTo: bottomStack.topAnchor),
-            bottomStack.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            bottomStack.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            bottomStack.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-        ])
-        view = root
-    }
-
-    /// Adds a full-width bar at the bottom (in order of calls, top to bottom).
-    func addBottomBar(_ bar: NSView) {
-        bottomStack.addArrangedSubview(bar)
-        bar.widthAnchor.constraint(equalTo: bottomStack.widthAnchor).isActive = true
-    }
-
-    var isConsoleVisible: Bool { !console.view.isHidden }
-
-    func setConsoleVisible(_ visible: Bool) {
-        guard visible != isConsoleVisible else { return }
-        if !visible { consoleHeight = max(120, console.view.frame.height) }
-        console.view.isHidden = !visible
-        split.adjustSubviews()
-        if visible {
-            split.layoutSubtreeIfNeeded()
-            split.setPosition(max(160, split.bounds.height - consoleHeight), ofDividerAt: 0)
-        }
-    }
-
-    func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
-        max(proposedMinimumPosition, 160)
-    }
-
-    func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
-        min(proposedMaximumPosition, splitView.bounds.height - 80)
-    }
-}
-
 /// One browser window: sidebar + panes, toolbar, and the command dispatcher.
 @MainActor
 final class MainWindowController: NSWindowController, NSWindowDelegate, CommandDispatching, NSMenuItemValidation, NSToolbarDelegate {
@@ -161,8 +83,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
             // Through the guarded path: a reload mid-rename would commit a half-typed name.
             MainActor.assumeIsolated { self?.paneGroup.panes.forEach { $0.reloadForExternalChange() } }
         })
+        observers.append(NotificationCenter.default.addObserver(forName: InlineRenamer.didEndEditing, object: nil, queue: .main) { [weak self] _ in
+            // Every pane held its reload back while the name was typed, not only the
+            // one that was renaming.
+            MainActor.assumeIsolated { self?.paneGroup.panes.forEach { $0.reloadIfPostponed() } }
+        })
         observers.append(NotificationCenter.default.addObserver(forName: Preferences.didChange, object: env.preferences, queue: .main) { [weak self] note in
-            let key = note.userInfo?[Preferences.changedKey] as? String
+            let key = note.userInfo?[Preferences.changedKey] as? Preferences.Key
             MainActor.assumeIsolated { self?.preferencesChanged(key: key) }
         })
         _ = workspace.view
@@ -180,6 +107,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.keyHints.reload(keyMap: self.env.keyMap)
+                self.paneGroup.panes.forEach { $0.keyMapChanged() }
             }
         })
         wireShell()
@@ -253,9 +181,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
         watcher?.watch(paneGroup.panes.flatMap(\.shownDirectories))
     }
 
-    private func foldersChanged(_ changed: Set<String>) {
+    /// The folders watched for changes right now (paths as `DirectoryWatcher.normalize` gives them).
+    var watchedFolders: Set<String> { watcher?.watched ?? [] }
+
+    /// FSEvents reported changes in `changed` (paths as `DirectoryWatcher.normalize` gives them).
+    func foldersChanged(_ changed: Set<String>) {
         for pane in paneGroup.panes where pane.shownDirectories.contains(where: { changed.contains(DirectoryWatcher.normalize($0.path)) }) {
-            pane.reloadForExternalChange()
+            // Columns view shows many folders; it re-reads only the ones that changed.
+            pane.reloadForExternalChange(in: changed)
         }
     }
 
@@ -268,6 +201,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
 
     func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? {
         env.operations.undoManager
+    }
+
+    /// Nothing reads a command's output once its window is gone: stop it.
+    func windowWillClose(_ notification: Notification) {
+        shell.stop()
     }
 
     // MARK: Commands
@@ -315,7 +253,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
         return true
     }
 
-    /// Commands implemented so far; menu items for the rest are disabled.
+    /// Whether `id` can run right now, given the panes, the selection and the shell;
+    /// menu and toolbar items are enabled by it. Commands the window doesn't know are
+    /// refused.
     func canPerform(_ id: CommandID) -> Bool {
         let pane = paneGroup.activePane
         switch id {
@@ -376,22 +316,21 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
 
     // MARK: Preferences
 
-    private func preferencesChanged(key: String?) {
+    private func preferencesChanged(key: Preferences.Key?) {
         switch key {
-        case "returnRenames":
+        case .returnRenames:
             env.reloadKeyMap()
-        case "showSidebar":
+        case .showSidebar:
             if sidebarItem.isCollapsed == env.preferences.showSidebar { sidebarItem.isCollapsed = !env.preferences.showSidebar }
-        case "commandHistory", "windowState":
-            break
-        case "favorites":
+        case .favorites:
             sidebar.reloadSections()
-        case "showKeyHints":
+        case .showKeyHints:
             keyHints.isHidden = !env.preferences.showKeyHints
-        case "showCommandLine":
+        case .showCommandLine:
             commandBar.isHidden = !env.preferences.showCommandLine
             if commandBar.isHidden, commandBar.hasFocus { paneGroup.activePane.focus() }
         default:
+            // Everything else changes what the panes show.
             paneGroup.panes.forEach { $0.applyPreferences() }
             refreshToolbar()
         }
@@ -426,89 +365,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
         }
     }
 
-    // MARK: Toolbar
-
-    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.toggleSidebar, .sidebarTrackingSeparator, .fmanNavigation, .flexibleSpace, .fmanViewMode, .fmanHidden, .fmanNewFolder, .fmanTerminal]
-    }
-
-    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        toolbarDefaultItemIdentifiers(toolbar) + [.space, .fmanPalette, .fmanSwap]
-    }
-
-    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier, willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
-        switch id {
-        case .fmanNavigation:
-            let group = NSToolbarItemGroup(itemIdentifier: id,
-                                           images: [symbol("chevron.left"), symbol("chevron.right")],
-                                           selectionMode: .momentary, labels: ["Back", "Forward"],
-                                           target: self, action: #selector(navigationClicked(_:)))
-            group.label = "Back/Forward"
-            group.isNavigational = true
-            return group
-        case .fmanViewMode:
-            let group = NSToolbarItemGroup(itemIdentifier: id,
-                                           images: [symbol("list.bullet"), symbol("rectangle.split.3x1")],
-                                           selectionMode: .selectOne, labels: ["List", "Columns"],
-                                           target: self, action: #selector(viewModeClicked(_:)))
-            group.label = "View"
-            group.selectedIndex = paneGroup.activePane.viewMode == .list ? 0 : 1
-            return group
-        case .fmanHidden:
-            return button(id, "eye.slash", "Hidden Files", .toggleHidden)
-        case .fmanNewFolder:
-            return button(id, "folder.badge.plus", "New Folder", .newFolder)
-        case .fmanTerminal:
-            return button(id, "terminal", "Open in Terminal", .openTerminal)
-        case .fmanPalette:
-            return button(id, "command", "Commands", .commandPalette)
-        case .fmanSwap:
-            return button(id, "arrow.left.arrow.right", "Swap Panes", .swapPanes)
-        default:
-            return nil
-        }
-    }
-
-    private func symbol(_ name: String) -> NSImage {
-        NSImage(systemSymbolName: name, accessibilityDescription: name)!
-    }
-
-    private func button(_ id: NSToolbarItem.Identifier, _ symbolName: String, _ label: String, _ command: CommandID) -> NSToolbarItem {
-        let item = NSToolbarItem(itemIdentifier: id)
-        item.image = symbol(symbolName)
-        item.label = label
-        item.paletteLabel = label
-        let keys = env.keyMap.keys(for: command).map(\.description).joined(separator: " or ")
-        item.toolTip = keys.isEmpty ? label : "\(label) (\(keys))"
-        item.target = self
-        item.action = #selector(toolbarCommand(_:))
-        item.isBordered = true
-        commandForToolbarItem[id] = command
-        return item
-    }
-
-    private var commandForToolbarItem: [NSToolbarItem.Identifier: CommandID] = [:]
-
-    @objc private func toolbarCommand(_ sender: NSToolbarItem) {
-        if let id = commandForToolbarItem[sender.itemIdentifier] { perform(id) }
-    }
-
-    @objc private func navigationClicked(_ sender: NSToolbarItemGroup) {
-        perform(sender.selectedIndex == 0 ? .back : .forward)
-    }
-
-    @objc private func viewModeClicked(_ sender: NSToolbarItemGroup) {
-        perform(sender.selectedIndex == 0 ? .listView : .columnsView)
-        paneGroup.activePane.focus()
-    }
-}
-
-extension NSToolbarItem.Identifier {
-    static let fmanNavigation = NSToolbarItem.Identifier("fman.navigation")
-    static let fmanViewMode = NSToolbarItem.Identifier("fman.viewMode")
-    static let fmanHidden = NSToolbarItem.Identifier("fman.hidden")
-    static let fmanNewFolder = NSToolbarItem.Identifier("fman.newFolder")
-    static let fmanTerminal = NSToolbarItem.Identifier("fman.terminal")
-    static let fmanPalette = NSToolbarItem.Identifier("fman.palette")
-    static let fmanSwap = NSToolbarItem.Identifier("fman.swap")
+    /// The command each toolbar button runs, filled as the items are made
+    /// (`MainWindowToolbar.swift`).
+    var commandForToolbarItem: [NSToolbarItem.Identifier: CommandID] = [:]
 }

@@ -6,6 +6,10 @@ import FmanCore
 /// Reloads when a startup file changes, after an hour, or on request.
 @MainActor
 final class ShellSetup {
+    /// Posted (object: the setup) when a load starts and when it ends, for anything that
+    /// shows the state (Settings ▸ Shell).
+    static let didChange = Notification.Name("fman.shellSetupDidChange")
+
     let shell: String
     /// Tests point this at a scratch config (ZDOTDIR/HOME).
     var captureEnvironment: [String: String]?
@@ -52,6 +56,7 @@ final class ShellSetup {
 
     private func load() {
         isLoading = true
+        NotificationCenter.default.post(name: Self.didChange, object: self)
         let shell = self.shell
         let env = captureEnvironment
         let file = definitionsFile
@@ -70,6 +75,7 @@ final class ShellSetup {
                 case .success(let s): self.snapshot = s; self.lastError = nil
                 case .failure(let e): self.snapshot = nil; self.lastError = e.localizedDescription
                 }
+                NotificationCenter.default.post(name: Self.didChange, object: self)
                 let waiting = self.waiters
                 self.waiters = []
                 waiting.forEach { $0(self.snapshot) }

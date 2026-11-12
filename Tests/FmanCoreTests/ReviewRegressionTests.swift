@@ -76,6 +76,18 @@ import Testing
         #expect(read("src/a.txt") == "new")
     }
 
+    /// The staged item's temporary name must not grow with the original name (255-byte limit).
+    @Test func replaceWorksForAVeryLongName() throws {
+        let name = String(repeating: "n", count: 246) + ".txt" // 250 bytes
+        let src = tmp.file("src/\(name)", "new")
+        tmp.file("dst/\(name)", "old")
+        let (r, _) = run(.copy, [src], to: tmp.url.appendingPathComponent("dst"))
+        #expect(r.errors == [])
+        #expect(read("dst/\(name)") == "new")
+        #expect(read(".TestTrash/\(name)") == "old")
+        #expect(try fm.contentsOfDirectory(atPath: tmp.url.appendingPathComponent("dst").path) == [name])
+    }
+
     @Test func copyingASymlinkIntoItsTargetIsAllowed() throws {
         let d = tmp.dir("D")
         let sub = tmp.dir("D/sub")
