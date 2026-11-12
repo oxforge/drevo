@@ -218,9 +218,9 @@ final class ColumnBrowserViewController: NSViewController, FileBrowser {
             guard let self else { return false }
             return self.delegate?.browser(self, handleKey: event) ?? false
         }
-        col.onDoubleClick = { [weak self] item in
+        col.onDoubleClick = { [weak self] items in
             guard let self else { return }
-            self.delegate?.browser(self, open: item)
+            self.delegate?.browser(self, open: items)
         }
         col.menuProvider = { [weak self] items in
             guard let self else { return nil }
@@ -331,7 +331,7 @@ final class FolderColumn: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     var onSelectionChange: (() -> Void)?
     var onFocus: (() -> Void)?
     var keyHandler: ((NSEvent) -> Bool)?
-    var onDoubleClick: ((FileItem) -> Void)?
+    var onDoubleClick: (([FileItem]) -> Void)?
     var menuProvider: (([FileItem]) -> NSMenu?)?
     var onDrop: (([URL], URL, TransferKind) -> Void)?
     var onDragEnded: (() -> Void)?
@@ -457,9 +457,12 @@ final class FolderColumn: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     }
 
     @objc private func doubleClicked(_ sender: Any?) {
-        let row = tableView.clickedRow
-        guard row >= 0, row < items.count else { return }
-        onDoubleClick?(items[row])
+        openRow(tableView.clickedRow)
+    }
+
+    func openRow(_ row: Int) {
+        let chosen = itemsForDoubleClick(row: row, items: items, selection: tableView.selectedRowIndexes)
+        if !chosen.isEmpty { onDoubleClick?(chosen) }
     }
 
     // MARK: Table

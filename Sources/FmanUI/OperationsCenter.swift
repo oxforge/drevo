@@ -13,20 +13,27 @@ protocol UserPrompts: AnyObject {
     func showError(_ message: String, detail: String?, in window: NSWindow?)
 }
 
-/// A running or finished copy/move, observed by the operations bar.
+/// A running background operation (copy, move, expand), observed by the operations bar.
 @MainActor
 final class TransferJob: Identifiable {
     let id = UUID()
-    let transfer: Transfer
     let title: String
+    private let cancelHandler: () -> Void
     fileprivate(set) var progress = TransferProgress()
     fileprivate(set) var isFinished = false
     let started = Date()
 
     init(transfer: Transfer) {
-        self.transfer = transfer
         self.title = transfer.title
+        self.cancelHandler = { transfer.cancel() }
     }
+
+    init(title: String, cancel: @escaping () -> Void) {
+        self.title = title
+        self.cancelHandler = cancel
+    }
+
+    func cancel() { cancelHandler() }
 }
 
 /// Runs file operations for every window: undo/redo, background transfers, refresh.
@@ -141,8 +148,62 @@ final class OperationsCenter {
         }
     }
 
+    // MARK: Archives
+
+    /// Expands archives next to themselves in the background (no Archive Utility, so no
+    /// Finder window pops up); `completion` gets what was created.
+    func extract(_ archives: [URL], window: NSWindow?, completion: (([URL]) -> Void)? = nil) {
+        let extractions = archives.compactMap(ArchiveExtraction.init(archive:))
+        guard !extractions.isEmpty else { return }
+        let title = extractions.count == 1 ? "Expanding “\(extractions[0].archive.lastPathComponent)”" : "Expanding \(extractions.count) archives"
+        let job = TransferJob(title: title) { extractions.forEach { $0.cancel() } }
+        job.progress.totalItems = extractions.count
+        jobs.append(job)
+        jobsChanged()
+
+        let work: @Sendable () -> (outputs: [URL], errors: [String]) = { [weak self] in
+            var outputs: [URL] = []
+            var errors: [String] = []
+            for (i, extraction) in extractions.enumerated() {
+                do {
+                    outputs += try extraction.run()
+                } catch is ArchiveExtraction.Cancelled {
+                    break
+                } catch {
+                    errors.append(error.localizedDescription)
+                }
+                onMainRunLoop {
+                    job.progress.completedItems = i + 1
+                    job.progress.currentName = extraction.archive.lastPathComponent
+                    self?.jobsChanged()
+                }
+            }
+            return (outputs, errors)
+        }
+        let finish: (([URL], [String])) -> Void = { [weak self] result in
+            guard let self else { return }
+            job.isFinished = true
+            self.jobs.removeAll { $0 === job }
+            self.jobsChanged()
+            if !result.0.isEmpty { self.registerUndo(.created(result.0), name: "Expand") }
+            self.postChange()
+            if !result.1.isEmpty {
+                self.prompts.showError("Some archives couldn’t be expanded.", detail: result.1.joined(separator: "\n"), in: window)
+            }
+            completion?(result.0)
+        }
+        if runTransfersSynchronously {
+            finish(work())
+        } else {
+            DispatchQueue.global(qos: .userInitiated).async {
+                let result = work()
+                onMainRunLoop { finish(result) }
+            }
+        }
+    }
+
     func cancelAll() {
-        jobs.forEach { $0.transfer.cancel() }
+        jobs.forEach { $0.cancel() }
     }
 
     private func jobsChanged() {

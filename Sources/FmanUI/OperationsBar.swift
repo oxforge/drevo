@@ -137,7 +137,7 @@ final class OperationsBar: NSView {
         }
 
         @objc private func stopClicked() {
-            job.transfer.cancel()
+            job.cancel()
         }
     }
 }

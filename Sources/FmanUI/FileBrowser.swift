@@ -12,8 +12,8 @@ protocol FileBrowserDelegate: AnyObject {
     func browserDidActivate(_ browser: FileBrowser)
     /// A key the browser doesn't handle itself; return true if it ran a command.
     func browser(_ browser: FileBrowser, handleKey event: NSEvent) -> Bool
-    /// Double-click on an item.
-    func browser(_ browser: FileBrowser, open item: FileItem)
+    /// Double-click: the clicked item, or the whole selection when the click is inside it.
+    func browser(_ browser: FileBrowser, open items: [FileItem])
     /// Context menu for the clicked items (empty = folder background).
     func browser(_ browser: FileBrowser, menuFor items: [FileItem]) -> NSMenu?
     /// Files were dropped onto `destination` (a folder row or the shown folder).
@@ -65,4 +65,14 @@ extension FileBrowser {
         table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         return InlineRenamer.begin(table: table, row: row, item: visibleItems[row], completion: completion)
     }
+}
+
+/// What a double-click on `row` opens: a folder opens alone; a file opens together with
+/// the rest of the selection when it's part of it (Finder's behaviour).
+@MainActor
+func itemsForDoubleClick(row: Int, items: [FileItem], selection: IndexSet) -> [FileItem] {
+    guard row >= 0, row < items.count else { return [] }
+    let clicked = items[row]
+    if clicked.isContainer || !selection.contains(row) { return [clicked] }
+    return selection.compactMap { $0 < items.count ? items[$0] : nil }.filter { !$0.isContainer }
 }

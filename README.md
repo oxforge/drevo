@@ -13,6 +13,10 @@ line that runs in the current folder, and a Settings window for the rest.
   pane, or ⇧⌘C / ⇧⌘M on a laptop keyboard. Drag & drop works between panes and with other
   apps, using Finder's rules: the same volume moves, another volume copies, ⌥ forces a
   copy, ⌘ forces a move.
+- **Archives expand in place.** Opening a .zip or .tar(.gz/.bz2/.xz) expands it next to
+  itself the way Finder does (one item lands beside the archive, several go into a folder
+  named after it), without Archive Utility popping up a Finder window. Select several and
+  press Return or double-click to expand them all; ⌘Z removes the result.
 - **Safe file operations.** Copies and moves run in the background with a progress bar
   and Stop. Name clashes ask Replace / Keep Both / Skip / Stop, and Replace moves the old
   item to the Trash. ⌘Z undoes copy, move, rename, trash, new folder and duplicate.
@@ -91,7 +95,7 @@ system-wide shortcut; a unit test checks the defaults against that list.
 | Move / extend selection, jump by typing | ↑ ↓, ⇧↑ ⇧↓, type a name |
 | Page down / up, first / last item (⇧ extends the selection) | fn↓ / fn↑, fn← / fn→ (Page Down/Up, Home/End) |
 | Up a level / into folder (both views) | ← / → |
-| Open (enter folder or open file) | Return, ⌘↓, double-click |
+| Open (enter folder, open files, expand archives; works on the whole selection) | Return, ⌘↓, double-click |
 | Enclosing folder, Back, Forward | ⌘↑, ⌘[, ⌘] |
 | Switch pane | Tab / ⇧Tab |
 | Copy / Move to other pane | F5 / F6, or ⇧⌘C / ⇧⌘M |

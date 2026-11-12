@@ -224,9 +224,12 @@ final class FileListViewController: NSViewController, FileBrowser, NSTableViewDa
     // MARK: Actions
 
     @objc private func doubleClicked(_ sender: Any?) {
-        let row = tableView.clickedRow
-        guard row >= 0, row < visibleItems.count else { return }
-        delegate?.browser(self, open: visibleItems[row])
+        openRow(tableView.clickedRow)
+    }
+
+    func openRow(_ row: Int) {
+        let items = itemsForDoubleClick(row: row, items: visibleItems, selection: tableView.selectedRowIndexes)
+        if !items.isEmpty { delegate?.browser(self, open: items) }
     }
 
     // MARK: Data source / delegate

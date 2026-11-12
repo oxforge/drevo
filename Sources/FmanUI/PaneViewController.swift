@@ -302,7 +302,19 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
                 return
             }
         }
-        env.opener.open(items.filter { !$0.isContainer }.map(\.url))
+        let files = items.filter { !$0.isContainer }
+        // Archives fman can expand itself: Archive Utility would reveal the result in a
+        // new Finder window.
+        let archives = files.filter { ArchiveExtraction.format(of: $0.url) != nil }
+        let others = files.filter { ArchiveExtraction.format(of: $0.url) == nil }
+        if !archives.isEmpty {
+            operations.extract(archives.map(\.url), window: view.window) { [weak self] outputs in
+                guard let self else { return }
+                let here = outputs.filter { $0.deletingLastPathComponent().standardizedFileURL.path == self.currentDirectory.standardizedFileURL.path }
+                self.reload(selecting: here)
+            }
+        }
+        if !others.isEmpty { env.opener.open(others.map(\.url)) }
     }
 
     // MARK: Commands
@@ -400,8 +412,8 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
         return dispatcher?.perform(id) ?? perform(id)
     }
 
-    func browser(_ browser: FileBrowser, open item: FileItem) {
-        open([item])
+    func browser(_ browser: FileBrowser, open items: [FileItem]) {
+        open(items)
     }
 
     func browser(_ browser: FileBrowser, drop urls: [URL], onto destination: URL, kind: TransferKind) {
