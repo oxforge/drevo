@@ -25,7 +25,56 @@ final class FileTableView: NSTableView {
 
     override func keyDown(with event: NSEvent) {
         if keyHandler?(event) == true { return }
+        if handlePagingKey(event) { return }
         super.keyDown(with: event)
+    }
+
+    // MARK: Paging
+
+    /// The end of the selection that keyboard paging moves (the other end is the anchor).
+    private var pagingLead: Int?
+
+    private enum KeyCode {
+        static let pageUp: UInt16 = 116, pageDown: UInt16 = 121, home: UInt16 = 115, end: UInt16 = 119
+    }
+
+    /// Page Up/Down (fn+↑/↓) and Home/End (fn+←/→) move the selection like a commander's
+    /// cursor instead of only scrolling (AppKit's default); with ⇧ they extend it.
+    private func handlePagingKey(_ event: NSEvent) -> Bool {
+        let mods = event.modifierFlags.intersection([.shift, .command, .option, .control])
+        guard mods.isEmpty || mods == .shift, numberOfRows > 0 else { return false }
+        let delta: Int
+        switch event.keyCode {
+        case KeyCode.pageDown: delta = rowsPerPage
+        case KeyCode.pageUp: delta = -rowsPerPage
+        case KeyCode.end: delta = numberOfRows
+        case KeyCode.home: delta = -numberOfRows
+        default: return false
+        }
+        moveSelection(by: delta, extending: mods == .shift)
+        return true
+    }
+
+    /// Rows that fit in the visible area, less one so the old cursor row stays in view.
+    var rowsPerPage: Int {
+        let pitch = rowHeight + intercellSpacing.height
+        guard pitch > 0 else { return 1 }
+        return max(1, Int(visibleRect.height / pitch) - 1)
+    }
+
+    /// Moves the cursor `delta` rows (clamped); `extending` selects from the anchor to it.
+    func moveSelection(by delta: Int, extending: Bool) {
+        let selection = selectedRowIndexes
+        let lead = pagingLead.flatMap { selection.contains($0) ? $0 : nil } ?? selection.last ?? (delta > 0 ? -1 : numberOfRows)
+        let target = max(0, min(numberOfRows - 1, lead + delta))
+        if extending, let first = selection.first, let last = selection.last {
+            let anchor = lead == first ? last : first
+            selectRowIndexes(IndexSet(integersIn: min(anchor, target)...max(anchor, target)), byExtendingSelection: false)
+        } else {
+            selectRowIndexes(IndexSet(integer: target), byExtendingSelection: false)
+        }
+        pagingLead = target
+        scrollRowToVisible(target)
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
@@ -44,9 +93,10 @@ final class FileTableView: NSTableView {
         return menuProvider?(rows)
     }
 
-    /// The row the keyboard cursor is on: last selected row.
+    /// The row the keyboard cursor is on: where paging left it, else the last selected row.
     var cursorRow: Int {
-        selectedRowIndexes.last ?? -1
+        if let lead = pagingLead, selectedRowIndexes.contains(lead) { return lead }
+        return selectedRowIndexes.last ?? -1
     }
 }
 

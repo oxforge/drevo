@@ -87,6 +87,7 @@ system-wide shortcut; a unit test checks the defaults against that list.
 | Action | Keys |
 | --- | --- |
 | Move / extend selection, jump by typing | ↑ ↓, ⇧↑ ⇧↓, type a name |
+| Page down / up, first / last item (⇧ extends the selection) | fn↓ / fn↑, fn← / fn→ (Page Down/Up, Home/End) |
 | Up a level / into folder (both views) | ← / → |
 | Open (enter folder or open file) | Return, ⌘↓, double-click |
 | Enclosing folder, Back, Forward | ⌘↑, ⌘[, ⌘] |
