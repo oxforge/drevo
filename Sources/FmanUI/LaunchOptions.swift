@@ -10,6 +10,8 @@ public struct LaunchOptions: Equatable {
     public var openPaths: [String] = []
     /// Use throwaway settings instead of the user's (implied by `--snapshot`).
     public var ephemeralSettings = false
+    /// Snapshot only: run this command in the console first (shows the shell UI).
+    public var snapshotCommand: String?
 
     public init() {}
 
@@ -28,6 +30,8 @@ public struct LaunchOptions: Equatable {
                 if let p = it.next() { openPaths.append(p) }
             case "--ephemeral":
                 ephemeralSettings = true
+            case "--snapshot-command":
+                snapshotCommand = it.next()
             default:
                 // Finder-style launches pass -psn_… and AppleEvent args; ignore unknowns.
                 break

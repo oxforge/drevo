@@ -1,11 +1,15 @@
 import AppKit
 import FmanCore
 
-/// Content area right of the sidebar: panes on top, bars (console, command line, key hints) below.
+/// Content area right of the sidebar: panes over a collapsible console, then the bars
+/// (operations, command line, key hints).
 @MainActor
-final class WorkspaceViewController: NSViewController {
+final class WorkspaceViewController: NSViewController, NSSplitViewDelegate {
     let paneGroup: PaneGroupViewController
+    let console = ConsoleViewController()
     let bottomStack = NSStackView()
+    private let split = NSSplitView()
+    private var consoleHeight: CGFloat = 220
 
     init(paneGroup: PaneGroupViewController) {
         self.paneGroup = paneGroup
@@ -18,20 +22,28 @@ final class WorkspaceViewController: NSViewController {
     override func loadView() {
         let root = NSView()
         addChild(paneGroup)
+        addChild(console)
+        split.isVertical = false
+        split.dividerStyle = .thin
+        split.delegate = self
+        split.addArrangedSubview(paneGroup.view)
+        split.addArrangedSubview(console.view)
+        split.setHoldingPriority(.defaultLow, forSubviewAt: 0)
+        split.setHoldingPriority(NSLayoutConstraint.Priority(rawValue: 260), forSubviewAt: 1)
+        console.view.isHidden = true
         bottomStack.orientation = .vertical
         bottomStack.spacing = 0
         bottomStack.alignment = .leading
         bottomStack.distribution = .fill
-        let pv = paneGroup.view
-        for v in [pv, bottomStack] {
+        for v in [split, bottomStack] {
             v.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(v)
         }
         NSLayoutConstraint.activate([
-            pv.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor),
-            pv.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            pv.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            pv.bottomAnchor.constraint(equalTo: bottomStack.topAnchor),
+            split.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor),
+            split.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            split.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            split.bottomAnchor.constraint(equalTo: bottomStack.topAnchor),
             bottomStack.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             bottomStack.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             bottomStack.bottomAnchor.constraint(equalTo: root.bottomAnchor),
@@ -44,6 +56,27 @@ final class WorkspaceViewController: NSViewController {
         bottomStack.addArrangedSubview(bar)
         bar.widthAnchor.constraint(equalTo: bottomStack.widthAnchor).isActive = true
     }
+
+    var isConsoleVisible: Bool { !console.view.isHidden }
+
+    func setConsoleVisible(_ visible: Bool) {
+        guard visible != isConsoleVisible else { return }
+        if !visible { consoleHeight = max(120, console.view.frame.height) }
+        console.view.isHidden = !visible
+        split.adjustSubviews()
+        if visible {
+            split.layoutSubtreeIfNeeded()
+            split.setPosition(max(160, split.bounds.height - consoleHeight), ofDividerAt: 0)
+        }
+    }
+
+    func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
+        max(proposedMinimumPosition, 160)
+    }
+
+    func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
+        min(proposedMaximumPosition, splitView.bounds.height - 80)
+    }
 }
 
 /// One browser window: sidebar + panes, toolbar, and the command dispatcher.
@@ -54,6 +87,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
     let sidebar: SidebarViewController
     let workspace: WorkspaceViewController
     var paneGroup: PaneGroupViewController { workspace.paneGroup }
+    let commandBar: CommandBar
+    let shell: ShellSession
     private var sidebarItem: NSSplitViewItem!
     private var observers: [NSObjectProtocol] = []
 
@@ -62,6 +97,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
         sidebar = SidebarViewController(env: env)
         let group = PaneGroupViewController(directories: directories, viewModes: viewModes, env: env)
         workspace = WorkspaceViewController(paneGroup: group)
+        commandBar = CommandBar(preferences: env.preferences)
+        shell = ShellSession(console: workspace.console, preferences: env.preferences)
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1240, height: 760),
@@ -126,6 +163,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
         })
         _ = workspace.view
         workspace.addBottomBar(OperationsBar(operations: env.operations))
+        workspace.addBottomBar(commandBar)
+        commandBar.isHidden = !env.preferences.showCommandLine
+        wireShell()
         refreshWindowChrome()
     }
 
@@ -144,6 +184,47 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
     /// Remembers panes for the next launch (the most recently changed window wins).
     func saveState() {
         env.preferences.savedWindowState = paneGroup.state.encoded()
+    }
+
+    private func wireShell() {
+        commandBar.onRun = { [weak self] command in
+            guard let self else { return }
+            self.workspace.setConsoleVisible(true)
+            if !self.shell.run(command, in: self.paneGroup.activePane.currentDirectory) {
+                NSSound.beep()
+                self.workspace.console.append("A command is still running — ⌘. stops it.\n", isError: true)
+            }
+        }
+        commandBar.onRunInTerminal = { [weak self] command in
+            guard let self else { return }
+            let dir = self.paneGroup.activePane.currentDirectory
+            if command.isEmpty {
+                TerminalLauncher.open(dir, env: self.env)
+            } else {
+                do { try TerminalLauncher.run(command, in: dir, env: self.env) } catch {
+                    self.env.operations.prompts.showError("Couldn’t open the terminal.", detail: error.localizedDescription, in: self.window)
+                }
+            }
+        }
+        commandBar.onEscape = { [weak self] in self?.paneGroup.activePane.focus() }
+        commandBar.onToggleConsole = { [weak self] in self?.perform(.toggleConsole) }
+        commandBar.selectionProvider = { [weak self] fullPaths in
+            guard let pane = self?.paneGroup.activePane else { return [] }
+            return pane.selectedItems.map { fullPaths ? $0.url.path : $0.name }
+        }
+        workspace.console.onStop = { [weak self] in self?.shell.stop() }
+        workspace.console.onHide = { [weak self] in
+            self?.workspace.setConsoleVisible(false)
+            self?.paneGroup.activePane.focus()
+        }
+        shell.onFinish = { [weak self] in self?.env.operations.postChange() }
+    }
+
+    /// Folder for "Open in Terminal": the selected folder, else the current one.
+    private var terminalFolder: URL {
+        let pane = paneGroup.activePane
+        if pane.selectedItems.count == 1, pane.selectedItems[0].isContainer { return pane.selectedItems[0].url }
+        return pane.currentDirectory
     }
 
     func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? {
@@ -172,6 +253,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
         case .smallerRows: prefs.rowSize = RowSize(rawValue: max(0, prefs.rowSize.rawValue - 1))!
         case .newWindow: (NSApp.delegate as? AppDelegate)?.newWindow(nil)
         case .quickLook: toggleQuickLook()
+        case .openTerminal: TerminalLauncher.open(terminalFolder, env: env)
+        case .runCommand:
+            if !env.preferences.showCommandLine { prefs.showCommandLine = true }
+            commandBar.focus()
+        case .runInTerminal: commandBar.submit(inTerminal: true)
+        case .toggleConsole:
+            workspace.setConsoleVisible(!workspace.isConsoleVisible)
+            if !workspace.isConsoleVisible { paneGroup.activePane.focus() }
+        case .stopCommand: shell.stop()
         case .addToSidebar:
             let pane = paneGroup.activePane
             let folders = pane.selectedItems.filter(\.isContainer).map(\.url)
@@ -199,6 +289,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
              .edit, .showPackageContents, .revealInFinder, .getInfo:
             return pane.canPerformFileCommand(id)
         case .quickLook: return !pane.selectedItems.isEmpty
+        case .openTerminal, .runCommand, .toggleConsole: return true
+        case .stopCommand: return shell.isRunning
+        case .runInTerminal: return commandBar.hasFocus
         case .enclosingFolder, .levelUp, .levelDown, .goHome, .goDesktop, .goDocuments, .goDownloads,
              .goApplications, .goUtilities, .goVolumes, .listView, .columnsView, .toggleHidden,
              .toggleStatusBar, .toggleKeyHints, .toggleCommandLine, .toggleSidebar, .biggerRows,
@@ -223,12 +316,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
         case .toggleStatusBar: menuItem.state = prefs.showStatusBar ? .on : .off
         case .toggleKeyHints: menuItem.state = prefs.showKeyHints ? .on : .off
         case .toggleCommandLine: menuItem.state = prefs.showCommandLine ? .on : .off
+        case .toggleConsole: menuItem.state = workspace.isConsoleVisible ? .on : .off
         case .toggleSidebar: menuItem.state = sidebarItem.isCollapsed ? .off : .on
         case .listView: menuItem.state = paneGroup.activePane.viewMode == .list ? .on : .off
         case .columnsView: menuItem.state = paneGroup.activePane.viewMode == .columns ? .on : .off
         default: break
         }
-        if isEditingText, CommandRegistry.spec(id)?.category != .window, CommandRegistry.spec(id)?.category != .view {
+        let category = CommandRegistry.spec(id)?.category
+        if isEditingText, category != .window, category != .view, category != .shell {
             return false
         }
         return canPerform(id)
@@ -242,8 +337,13 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
             env.reloadKeyMap()
         case "showSidebar":
             if sidebarItem.isCollapsed == env.preferences.showSidebar { sidebarItem.isCollapsed = !env.preferences.showSidebar }
-        case "commandHistory", "windowState", "favorites":
-            if key == "favorites" { sidebar.reloadSections() }
+        case "commandHistory", "windowState":
+            break
+        case "favorites":
+            sidebar.reloadSections()
+        case "showCommandLine":
+            commandBar.isHidden = !env.preferences.showCommandLine
+            if commandBar.isHidden, commandBar.hasFocus { paneGroup.activePane.focus() }
         default:
             paneGroup.panes.forEach { $0.applyPreferences() }
             refreshToolbar()
@@ -256,6 +356,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
         let pane = paneGroup.activePane
         window?.title = Formatting.displayName(pane.currentDirectory)
         window?.representedURL = pane.currentDirectory
+        commandBar.setDirectory(pane.currentDirectory)
         refreshToolbar()
     }
 

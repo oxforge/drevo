@@ -78,7 +78,9 @@ enum MainMenu {
         add(panes, [.addPane, .removePane], keyMap)
 
         let shell = submenu(main, "Shell")
-        add(shell, [.openTerminal, .runCommand, .toggleConsole], keyMap)
+        add(shell, [.openTerminal, .runCommand, .runInTerminal], keyMap)
+        shell.addItem(.separator())
+        add(shell, [.toggleConsole, .stopCommand], keyMap)
 
         let window = submenu(main, "Window")
         window.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")

@@ -107,6 +107,8 @@ public extension CommandID {
     static let openTerminal = CommandID("shell.openTerminal")
     static let runCommand = CommandID("shell.runCommand")
     static let toggleConsole = CommandID("shell.toggleConsole")
+    static let stopCommand = CommandID("shell.stop")
+    static let runInTerminal = CommandID("shell.runInTerminal")
     // Window
     static let newWindow = CommandID("window.new")
 }
@@ -178,6 +180,8 @@ public enum CommandRegistry {
         CommandSpec(.openTerminal, "Open in Terminal", .shell, keys: ["opt+cmd+t"], help: "Open the terminal app in this folder"),
         CommandSpec(.runCommand, "Run Shell Command…", .shell, keys: ["!", "opt+cmd+r"], help: "Run a command in this folder with your shell"),
         CommandSpec(.toggleConsole, "Show Console", .shell, keys: ["opt+cmd+j"], help: "Output of commands run from the command line"),
+        CommandSpec(.stopCommand, "Stop Running Command", .shell, keys: ["cmd+."], help: "Interrupt the command running in the console"),
+        CommandSpec(.runInTerminal, "Run Command in Terminal", .shell, help: "From the command line: ⌘↩ runs it in your terminal app"),
         // Window
         CommandSpec(.newWindow, "New Window", .window, keys: ["cmd+n"]),
     ]
