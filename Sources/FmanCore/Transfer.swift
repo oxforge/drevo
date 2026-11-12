@@ -191,8 +191,11 @@ public final class Transfer: @unchecked Sendable {
         var created: [URL] = []
         var moved: [MovedItem] = []
         var standingDecision: ConflictAction?
-        let conflictsTotal = plans.filter { fm.fileExists(atPath: destination.appendingPathComponent($0.0.lastPathComponent).path) }.count
+        let conflictsTotal = plans.filter { FileIdentity.exists(destination.appendingPathComponent($0.0.lastPathComponent)) }.count
         var conflictsSeen = 0
+        // Compare folders by identity, not by path: two panes can show one folder through
+        // /tmp and /private/tmp, a symlink, or different letter case.
+        let destinationID = FileIdentity.of(destination, followLinks: true)
 
         for (source, sameVolume, size) in plans {
             if isCancelled { result.cancelled = true; break }
@@ -206,12 +209,19 @@ public final class Transfer: @unchecked Sendable {
                 continue
             }
             var dest = destination.appendingPathComponent(name)
-            let sameFolder = source.deletingLastPathComponent().standardizedFileURL.path == destination.standardizedFileURL.path
+            let sourceParentID = FileIdentity.of(source.deletingLastPathComponent(), followLinks: true)
+            var sameFolder = sourceParentID != nil && sourceParentID == destinationID
+            if !sameFolder, FileIdentity.exists(dest),
+               FileIdentity.of(dest, followLinks: false) == FileIdentity.of(source, followLinks: false) {
+                sameFolder = true // the "existing" item is the source itself, reached another way
+            }
+            /// When replacing: the item being replaced; the new one is staged under a temporary name.
+            var replacing: URL?
 
             if sameFolder {
                 if kind == .move { result.skipped.append(source); progress.completedItems += 1; continue }
                 dest = destination.appendingPathComponent(UniqueName.copyName(for: name, isFolder: isFolder, taken: UniqueName.takenIn(destination)))
-            } else if fm.fileExists(atPath: dest.path) || (try? dest.checkResourceIsReachable()) == true || isSymlink(dest) {
+            } else if FileIdentity.exists(dest) {
                 conflictsSeen += 1
                 let action: ConflictAction
                 if let standing = standingDecision {
@@ -234,21 +244,22 @@ public final class Transfer: @unchecked Sendable {
                 case .keepBoth:
                     dest = destination.appendingPathComponent(UniqueName.numberedName(for: name, isFolder: isFolder, taken: UniqueName.takenIn(destination)))
                 case .replace:
-                    do {
-                        replaced.append(TrashedItem(original: dest, inTrash: try trash.trash(dest)))
-                    } catch {
-                        result.errors.append("Couldn’t replace “\(name)”: \(error.localizedDescription)")
+                    if source.isInside(dest) {
+                        result.errors.append("Can’t replace “\(name)” with an item it contains.")
                         continue
                     }
+                    replacing = dest
+                    dest = destination.appendingPathComponent(".\(name).fman-\(UUID().uuidString.prefix(8))")
                 }
                 if result.cancelled { break }
             }
 
             let base = progress.completedBytes
+            let movedByRename = kind == .move && sameVolume
             do {
-                if kind == .move && sameVolume {
+                // 1. Put the item at `dest` (a temporary name when replacing).
+                if movedByRename {
                     try fm.moveItem(at: source, to: dest)
-                    moved.append(MovedItem(from: source, to: dest))
                 } else {
                     do {
                         try CopyEngine.copy(source, to: dest, allowClone: allowClone) { [weak self] copied in
@@ -262,12 +273,27 @@ public final class Transfer: @unchecked Sendable {
                         try? fm.removeItem(at: dest)
                         throw error
                     }
-                    if kind == .move {
-                        try fm.removeItem(at: source)
-                        moved.append(MovedItem(from: source, to: dest))
-                    } else {
-                        created.append(dest)
+                }
+                // 2. Replace: only now that the new item is complete does the old one go.
+                if let replacing {
+                    var inTrash: URL?
+                    do {
+                        inTrash = try trash.trash(replacing)
+                        try fm.moveItem(at: dest, to: replacing)
+                        replaced.append(TrashedItem(original: replacing, inTrash: inTrash!))
+                        dest = replacing
+                    } catch {
+                        if let inTrash { try? fm.moveItem(at: inTrash, to: replacing) }
+                        if movedByRename { try? fm.moveItem(at: dest, to: source) } else { try? fm.removeItem(at: dest) }
+                        throw error
                     }
+                }
+                // 3. A move across volumes removes the source last, after everything succeeded.
+                if kind == .move {
+                    if !movedByRename { try fm.removeItem(at: source) }
+                    moved.append(MovedItem(from: source, to: dest))
+                } else {
+                    created.append(dest)
                 }
                 result.outputs.append(dest)
             } catch is CopyEngine.Cancelled {
@@ -289,10 +315,6 @@ public final class Transfer: @unchecked Sendable {
         return result
     }
 
-    private func isSymlink(_ url: URL) -> Bool {
-        (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true
-    }
-
     /// Byte updates at most ~30 a second; item boundaries (forced) always report and
     /// don't delay the next byte update.
     private func report(_ p: TransferProgress, force: Bool) {
@@ -302,5 +324,23 @@ public final class Transfer: @unchecked Sendable {
             lastReport = now
         }
         onProgress?(p)
+    }
+}
+
+/// Device + inode: the same item no matter which path reaches it.
+struct FileIdentity: Equatable {
+    let device: dev_t
+    let inode: ino_t
+
+    static func of(_ url: URL, followLinks: Bool) -> FileIdentity? {
+        var st = stat()
+        let rc = followLinks ? stat(url.path, &st) : lstat(url.path, &st)
+        return rc == 0 ? FileIdentity(device: st.st_dev, inode: st.st_ino) : nil
+    }
+
+    /// True if anything is at `url`, including a broken symlink.
+    static func exists(_ url: URL) -> Bool {
+        var st = stat()
+        return lstat(url.path, &st) == 0
     }
 }

@@ -158,7 +158,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
             self.paneGroup.activePane.focus()
         }
         observers.append(NotificationCenter.default.addObserver(forName: OperationsCenter.filesDidChange, object: env.operations, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.paneGroup.panes.forEach { $0.reload() } }
+            // Through the guarded path: a reload mid-rename would commit a half-typed name.
+            MainActor.assumeIsolated { self?.paneGroup.panes.forEach { $0.reloadForExternalChange() } }
         })
         observers.append(NotificationCenter.default.addObserver(forName: Preferences.didChange, object: env.preferences, queue: .main) { [weak self] note in
             let key = note.userInfo?[Preferences.changedKey] as? String

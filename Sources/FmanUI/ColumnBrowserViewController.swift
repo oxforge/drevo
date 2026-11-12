@@ -250,6 +250,9 @@ final class ColumnBrowserViewController: NSViewController, FileBrowser {
             stack.removeView(col.container)
         }
         columns.removeSubrange(index...)
+        // Never point past the last column (a selection change in an earlier column
+        // removes the focused one).
+        focusedIndex = min(focusedIndex, max(0, columns.count - 1))
     }
 
     private func columnSelectionChanged(_ col: FolderColumn) {
@@ -299,7 +302,7 @@ final class ColumnBrowserViewController: NSViewController, FileBrowser {
     /// Scrolls so the focused column and the one after it (next folder or preview) are in
     /// view. Like Finder, a partly visible column on the left hints at more levels.
     private func scrollToFocused() {
-        guard !columns.isEmpty else { return }
+        guard columns.indices.contains(focusedIndex) else { return }
         view.layoutSubtreeIfNeeded()
         let views = stack.arrangedSubviews
         guard let focusedView = views.firstIndex(of: columns[focusedIndex].container) else { return }

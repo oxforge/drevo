@@ -164,7 +164,13 @@ public struct FileOperations: Sendable {
             let dir = url.deletingLastPathComponent()
             let name = UniqueName.copyName(for: url.lastPathComponent, isFolder: url.isDirectoryOnDisk, taken: UniqueName.takenIn(dir))
             let dest = dir.appendingPathComponent(name)
-            try CopyEngine.copy(url, to: dest, allowClone: true, progress: nil)
+            do {
+                try CopyEngine.copy(url, to: dest, allowClone: true, progress: nil)
+            } catch {
+                try? fm.removeItem(at: dest) // no half-made "x copy"
+                if !made.isEmpty { throw PartialFailure(error: error, undo: .created(made)) }
+                throw error
+            }
             made.append(dest)
         }
         return (made, .created(made))
@@ -186,29 +192,40 @@ public struct FileOperations: Sendable {
 
     // MARK: Undo
 
-    /// Reverses `record`; returns the record that redoes it.
+    /// Reverses `record`; returns the record that redoes it. If it fails partway, throws
+    /// `PartialFailure` whose `undo` redoes the part that was reversed.
     public func undo(_ record: UndoRecord) throws -> UndoRecord {
         switch record {
         case .created(let urls):
-            return try moveToTrash(urls.filter { fm.fileExists(atPath: $0.path) })
+            return try moveToTrash(urls.filter { FileIdentity.exists($0) })
         case .trashed(let items):
             var restored: [URL] = []
-            for item in items {
-                let dir = item.original.deletingLastPathComponent()
-                try fm.createDirectory(at: dir, withIntermediateDirectories: true)
-                var dest = item.original
-                if fm.fileExists(atPath: dest.path) {
-                    dest = dir.appendingPathComponent(UniqueName.numberedName(for: dest.lastPathComponent, isFolder: dest.hasDirectoryPath, taken: UniqueName.takenIn(dir)))
+            do {
+                for item in items {
+                    let dir = item.original.deletingLastPathComponent()
+                    try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+                    var dest = item.original
+                    if FileIdentity.exists(dest) {
+                        dest = dir.appendingPathComponent(UniqueName.numberedName(for: dest.lastPathComponent, isFolder: dest.hasDirectoryPath, taken: UniqueName.takenIn(dir)))
+                    }
+                    try fm.moveItem(at: item.inTrash, to: dest)
+                    restored.append(dest)
                 }
-                try fm.moveItem(at: item.inTrash, to: dest)
-                restored.append(dest)
+            } catch {
+                if !restored.isEmpty { throw PartialFailure(error: error, undo: .created(restored)) }
+                throw error
             }
             return .created(restored)
         case .moved(let items):
             var back: [MovedItem] = []
-            for item in items.reversed() {
-                try fm.moveItem(at: item.to, to: item.from)
-                back.append(MovedItem(from: item.to, to: item.from))
+            do {
+                for item in items.reversed() {
+                    try fm.moveItem(at: item.to, to: item.from)
+                    back.append(MovedItem(from: item.to, to: item.from))
+                }
+            } catch {
+                if !back.isEmpty { throw PartialFailure(error: error, undo: .moved(back.reversed())) }
+                throw error
             }
             return .moved(back.reversed())
         case .renamed(let from, let to):
@@ -216,7 +233,14 @@ public struct FileOperations: Sendable {
             return .renamed(from: to, to: from)
         case .group(let records):
             var redo: [UndoRecord] = []
-            for r in records.reversed() { redo.append(try undo(r)) }
+            do {
+                for r in records.reversed() { redo.append(try undo(r)) }
+            } catch let partial as PartialFailure {
+                throw PartialFailure(error: partial.error, undo: .group(redo + [partial.undo]))
+            } catch {
+                if !redo.isEmpty { throw PartialFailure(error: error, undo: .group(redo)) }
+                throw error
+            }
             return .group(redo)
         }
     }
@@ -236,10 +260,13 @@ extension URL {
         return FileManager.default.fileExists(atPath: path, isDirectory: &isDir) && isDir.boolValue
     }
 
-    /// True if `self` is `other` or inside it.
+    /// True if `self` is `other` or inside it. `other` itself isn't followed if it's a
+    /// symlink: a link is copied or moved as a link, so copying it into its target is fine.
     public func isInside(_ other: URL) -> Bool {
-        let a = standardizedFileURL.resolvingSymlinksInPath().path
-        let b = other.standardizedFileURL.resolvingSymlinksInPath().path
+        let a = standardizedFileURL.resolvingSymlinksInPath().path.lowercased()
+        let o = other.standardizedFileURL
+        let bPath = o.path == "/" ? "/" : o.deletingLastPathComponent().resolvingSymlinksInPath().appendingPathComponent(o.lastPathComponent).path
+        let b = bPath.lowercased()
         return a == b || a.hasPrefix(b.hasSuffix("/") ? b : b + "/")
     }
 }

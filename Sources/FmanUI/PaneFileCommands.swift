@@ -59,11 +59,17 @@ extension PaneViewController {
 
     func beginRename(_ url: URL) {
         browser.beginRename(url) { [weak self] newName in
-            guard let self, let newName else { return }
+            guard let self else { return }
+            let pending = self.reloadPendingAfterRename
+            self.reloadPendingAfterRename = false
+            guard let newName else {
+                if pending { self.reload() }
+                return
+            }
             let renamed: URL? = self.operations.perform("Rename", in: self.view.window) {
                 try self.operations.ops.rename(url, to: newName)
             }
-            if let renamed { self.reload(selecting: [renamed]) }
+            if let renamed { self.reload(selecting: [renamed]) } else if pending { self.reload() }
             self.focus()
         }
     }

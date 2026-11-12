@@ -208,6 +208,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
+    /// Quitting mid-copy would leave half-copied items under their final names: ask, then
+    /// stop the transfers and wait for their cleanup before quitting. Running shell
+    /// commands are interrupted so they don't outlive the app.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        windowControllers.forEach { $0.shell.stop() }
+        let ops = env.operations
+        guard !ops.jobs.isEmpty else { return .terminateNow }
+        let alert = NSAlert()
+        alert.messageText = ops.jobs.count == 1 ? "A copy or move is still running." : "\(ops.jobs.count) copies or moves are still running."
+        alert.informativeText = "Quitting stops them; items that weren’t finished are removed from the destination."
+        alert.addButton(withTitle: "Stop and Quit")
+        alert.addButton(withTitle: "Keep Running")
+        guard alert.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
+        ops.cancelAll()
+        var observer: NSObjectProtocol?
+        observer = NotificationCenter.default.addObserver(forName: OperationsCenter.jobsDidChange, object: ops, queue: .main) { _ in
+            MainActor.assumeIsolated {
+                guard ops.jobs.isEmpty else { return }
+                if let observer { NotificationCenter.default.removeObserver(observer) }
+                NSApp.reply(toApplicationShouldTerminate: true)
+            }
+        }
+        return .terminateLater
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag { newWindow(nil) }
         return true

@@ -135,8 +135,8 @@ keys or clashes are reported.
 
 The bar under the panes runs commands in the active pane's folder:
 
-- **Return** runs the command with your login shell, the one in your account (`dscl` /
-  `getpwuid`), as `shell -l -i -c "…"`. PATH, aliases and functions match Terminal.
+- **Return** runs the command with your login shell, the one set in your user account
+  (the same one Terminal uses), as `shell -l -i -c "…"`. PATH, aliases and functions match Terminal.
   Output streams into the console (⌥⌘J), with stderr in red, then the exit status and
   timing. ⌘. stops it (Ctrl-C to the whole process group).
 - **⌘Return** runs it in your terminal app instead, for interactive tools like vim, top

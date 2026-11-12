@@ -92,7 +92,12 @@ public final class ShellCommand: @unchecked Sendable {
     public func start() throws {
         var outPipe: [Int32] = [0, 0]
         var errPipe: [Int32] = [0, 0]
-        guard pipe(&outPipe) == 0, pipe(&errPipe) == 0 else { throw StartError.spawn(errno) }
+        guard pipe(&outPipe) == 0 else { throw StartError.spawn(errno) }
+        guard pipe(&errPipe) == 0 else {
+            let code = errno
+            close(outPipe[0]); close(outPipe[1])
+            throw StartError.spawn(code)
+        }
 
         var attr: posix_spawnattr_t?
         posix_spawnattr_init(&attr)

@@ -166,7 +166,7 @@ final class PaneGroupViewController: NSViewController, NSSplitViewDelegate {
             }
         }
         if env.preferences.confirmTransfers || target == nil {
-            env.operations.prompts.askDestination(kind: kind, count: urls.count, proposed: proposed, in: window) { dest in
+            env.operations.prompts.askDestination(kind: kind, count: urls.count, proposed: proposed, base: source.currentDirectory, in: window) { dest in
                 if let dest { run(dest) }
                 source.focus()
             }

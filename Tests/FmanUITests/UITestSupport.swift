@@ -51,8 +51,14 @@ final class ScriptedPrompts: UserPrompts {
     var askedDestination: URL?
 
     func confirmDelete(_ urls: [URL], in window: NSWindow?, then: @escaping (Bool) -> Void) { then(deleteAnswer) }
-    func askDestination(kind: TransferKind, count: Int, proposed: URL, in window: NSWindow?, then: @escaping (URL?) -> Void) {
+    var typedDestination: String?
+    var askedBase: URL?
+    func askDestination(kind: TransferKind, count: Int, proposed: URL, base: URL, in window: NSWindow?, then: @escaping (URL?) -> Void) {
         askedDestination = proposed
+        askedBase = base
+        if let typed = typedDestination {
+            return then(URL(fileURLWithPath: PathCompletion.expand(typed, relativeTo: base)))
+        }
         then(destination ?? proposed)
     }
     nonisolated func resolveConflict(_ conflict: Conflict, in window: NSWindow?) -> ConflictDecision {

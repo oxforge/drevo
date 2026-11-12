@@ -31,6 +31,9 @@ final class FileTableView: NSTableView {
     override func menu(for event: NSEvent) -> NSMenu? {
         let point = convert(event.locationInWindow, from: nil)
         let row = self.row(at: point)
+        // Focus first: in Columns view, focusing tells the browser which column is current
+        // before the selection change rebuilds the columns after it.
+        window?.makeFirstResponder(self)
         var rows = selectedRowIndexes
         if row >= 0, !rows.contains(row) {
             selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
@@ -38,7 +41,6 @@ final class FileTableView: NSTableView {
         } else if row < 0 {
             rows = []
         }
-        window?.makeFirstResponder(self)
         return menuProvider?(rows)
     }
 

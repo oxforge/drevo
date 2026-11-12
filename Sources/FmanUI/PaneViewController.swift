@@ -23,6 +23,7 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
     private(set) var viewMode: ViewMode
     private(set) var sort = FileSort()
     private(set) var filter = ""
+    var reloadPendingAfterRename = false
     var shownDirectories: [URL] { browser.shownDirectories }
     private(set) var browser: FileBrowser!
 
@@ -219,9 +220,13 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
         if doReload { reload() }
     }
 
-    /// FSEvents saw a change in one of this pane's folders.
+    /// Files changed (FSEvents, an operation, undo). While a rename is being typed the
+    /// reload waits; ending the edit early would commit a half-typed name.
     func reloadForExternalChange() {
-        guard !InlineRenamer.isEditing else { return }
+        guard !InlineRenamer.isEditing else {
+            reloadPendingAfterRename = true
+            return
+        }
         reload()
     }
 

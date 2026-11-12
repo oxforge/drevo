@@ -6,8 +6,8 @@ import FmanCore
 protocol UserPrompts: AnyObject {
     /// "Delete immediately?" — permanent deletion.
     func confirmDelete(_ urls: [URL], in window: NSWindow?, then: @escaping (Bool) -> Void)
-    /// F5/F6 sheet: where to copy/move; nil = cancelled.
-    func askDestination(kind: TransferKind, count: Int, proposed: URL, in window: NSWindow?, then: @escaping (URL?) -> Void)
+    /// F5/F6 sheet: where to copy/move; nil = cancelled. Relative input resolves against `base`.
+    func askDestination(kind: TransferKind, count: Int, proposed: URL, base: URL, in window: NSWindow?, then: @escaping (URL?) -> Void)
     /// Called on the transfer's worker thread; may block until answered.
     nonisolated func resolveConflict(_ conflict: Conflict, in window: NSWindow?) -> ConflictDecision
     func showError(_ message: String, detail: String?, in window: NSWindow?)
@@ -80,6 +80,10 @@ final class OperationsCenter {
         do {
             let redo = try ops.undo(record)
             registerUndo(redo, name: name)
+        } catch let partial as PartialFailure {
+            // Keep the reversed part redoable; report what couldn't be undone.
+            registerUndo(partial.undo, name: name)
+            prompts.showError("Couldn’t completely undo \(name).", detail: partial.localizedDescription, in: NSApp.keyWindow)
         } catch {
             prompts.showError("Couldn’t undo \(name).", detail: error.localizedDescription, in: NSApp.keyWindow)
         }
@@ -163,7 +167,7 @@ final class SheetPrompts: UserPrompts {
         present(alert, in: window) { then($0 == .alertFirstButtonReturn) }
     }
 
-    func askDestination(kind: TransferKind, count: Int, proposed: URL, in window: NSWindow?, then: @escaping (URL?) -> Void) {
+    func askDestination(kind: TransferKind, count: Int, proposed: URL, base: URL, in window: NSWindow?, then: @escaping (URL?) -> Void) {
         let alert = NSAlert()
         let verb = kind == .copy ? "Copy" : "Move"
         alert.messageText = "\(verb) \(count == 1 ? "1 item" : "\(count) items") to:"
@@ -177,8 +181,8 @@ final class SheetPrompts: UserPrompts {
         alert.window.initialFirstResponder = field
         present(alert, in: window) { response in
             guard response == .alertFirstButtonReturn else { return then(nil) }
-            let path = (field.stringValue.trimmingCharacters(in: .whitespaces) as NSString).expandingTildeInPath
-            then(URL(fileURLWithPath: path))
+            // Like the path bar: "~" expands, relative paths start at the source pane's folder.
+            then(URL(fileURLWithPath: PathCompletion.expand(field.stringValue, relativeTo: base)))
         }
     }
 
