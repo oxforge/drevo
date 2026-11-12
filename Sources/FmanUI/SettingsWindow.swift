@@ -159,13 +159,11 @@ private struct ShellTab: View {
     @ObservedObject var model: SettingsModel
 
     private var terminals: [URL] { TerminalLauncher.installedTerminals() }
-    private static let editors = [
-        "/Applications/Visual Studio Code.app", "/Applications/Cursor.app", "/Applications/Zed.app",
-        "/Applications/Sublime Text.app", "/Applications/BBEdit.app", "/Applications/Nova.app",
-        "/System/Applications/TextEdit.app",
-    ]
+    /// Picker tag for "Other…"; no app has this path.
+    private static let otherEditor = "other"
 
     var body: some View {
+        let editors = EditorChoices.installed(chosen: model.prefs.editorAppPath).map(\.path)
         Form {
             Picker("Terminal app (⌥⌘T, ⌘↩)", selection: Binding(
                 get: { model.prefs.terminalAppPath ?? TerminalLauncher.defaultTerminal.path },
@@ -184,12 +182,20 @@ private struct ShellTab: View {
                 Text(model.shellSetupStatus).font(.caption).foregroundStyle(.secondary)
             }
             Picker("Editor for F4", selection: Binding(
-                get: { model.prefs.editorAppPath ?? "" },
-                set: { model.prefs.editorAppPath = $0.isEmpty ? nil : $0 })) {
+                get: { model.prefs.editorAppPath.flatMap { path in editors.first { $0 == URL(fileURLWithPath: path).standardizedFileURL.path } } ?? "" },
+                set: { choice in
+                    guard choice == Self.otherEditor else { return model.prefs.editorAppPath = choice.isEmpty ? nil : choice }
+                    // After the menu has closed: a modal panel can't run while it tracks.
+                    onMainRunLoop {
+                        if let app = EditorChoices.chooseOther() { model.prefs.editorAppPath = app.path }
+                    }
+                })) {
                 Text("Default app for text").tag("")
-                ForEach(Self.editors.filter { FileManager.default.fileExists(atPath: $0) }, id: \.self) {
+                ForEach(editors, id: \.self) {
                     Text(FileManager.default.displayName(atPath: $0)).tag($0)
                 }
+                Divider()
+                Text("Other…").tag(Self.otherEditor)
             }
         }
         .formStyle(.grouped)
