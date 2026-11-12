@@ -12,6 +12,8 @@ public struct LaunchOptions: Equatable {
     public var ephemeralSettings = false
     /// Snapshot only: run this command in the console first (shows the shell UI).
     public var snapshotCommand: String?
+    /// Snapshot the Settings window instead of the main window.
+    public var snapshotSettings = false
 
     public init() {}
 
@@ -32,6 +34,8 @@ public struct LaunchOptions: Equatable {
                 ephemeralSettings = true
             case "--snapshot-command":
                 snapshotCommand = it.next()
+            case "--snapshot-settings":
+                snapshotSettings = true
             default:
                 // Finder-style launches pass -psn_… and AppleEvent args; ignore unknowns.
                 break

@@ -12,7 +12,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.options = options
     }
 
+    /// Tests drive the delegate without launching the app.
+    func useEnvironmentForTests(_ env: AppEnvironment) {
+        self.env = env
+    }
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        NSAppleEventManager.shared().setEventHandler(self, andSelector: #selector(handleReveal(_:withReply:)),
+                                                     forEventClass: AEEventClass(kAEMiscStandards),
+                                                     andEventID: AEEventID(kAEMakeObjectsVisible))
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.servicesProvider = self
         switch options.appearance {
         case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
         case "light": NSApp.appearance = NSAppearance(named: .aqua)
@@ -45,6 +57,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + (options.snapshotCommand == nil ? 0.8 : 2.5)) {
                 do {
+                    if self.options.snapshotSettings {
+                        self.showSettings(nil)
+                        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+                        if let w = NSApp.windows.first(where: { $0.title == "fman Settings" }) {
+                            try Snapshot.write(window: w, to: URL(fileURLWithPath: path))
+                            exit(0)
+                        }
+                    }
                     try Snapshot.write(window: wc.window!, overlays: [wc.sidebar.view], to: URL(fileURLWithPath: path))
                     exit(0)
                 } catch {
@@ -89,7 +109,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc func showSettings(_ sender: Any?) {}
+    @objc func showSettings(_ sender: Any?) {
+        SettingsWindowController.show(env: env)
+    }
+
+    // MARK: Opening folders from elsewhere (Dock, `open -a fman`, default folder viewer)
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        show(urls)
+    }
+
+    /// Folders open in the active pane; files are revealed (their folder opens with them selected).
+    func show(_ urls: [URL]) {
+        guard let first = urls.first else { return }
+        let wc = frontWindowController ?? openWindow(directories: [first.deletingLastPathComponent(), first.deletingLastPathComponent()])
+        let pane = wc.paneGroup.activePane
+        if first.isDirectoryOnDisk, (try? FileItem(url: first))?.isContainer == true {
+            pane.navigate(to: first)
+        } else {
+            pane.navigate(to: first)
+            let siblings = urls.filter { $0.deletingLastPathComponent() == first.deletingLastPathComponent() }
+            if siblings.count > 1 { pane.browser.select(siblings) }
+        }
+        wc.window?.makeKeyAndOrderFront(nil)
+        pane.focus()
+        NSApp.activate()
+    }
+
+    private var frontWindowController: MainWindowController? {
+        if let key = NSApp.keyWindow?.windowController as? MainWindowController { return key }
+        if let main = NSApp.mainWindow?.windowController as? MainWindowController { return main }
+        return windowControllers.last
+    }
+
+    /// "Show in Finder" from other apps when NSFileViewer points at fman ('misc'/'mvis').
+    @objc func handleReveal(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {
+        show(Self.fileURLs(in: event))
+    }
+
+    static func fileURLs(in event: NSAppleEventDescriptor) -> [URL] {
+        guard let direct = event.paramDescriptor(forKeyword: keyDirectObject) else { return [] }
+        if direct.numberOfItems == 0 {
+            return [direct.coerce(toDescriptorType: typeFileURL)?.fileURLValue].compactMap { $0 }
+        }
+        return (1...direct.numberOfItems).compactMap { direct.atIndex($0)?.coerce(toDescriptorType: typeFileURL)?.fileURLValue }
+    }
+
+    /// Services ▸ Open in fman (Finder's context menu, any app with files).
+    @objc func openInFman(_ pboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        let urls = (pboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+        show(urls)
+    }
 
     @objc func showShortcuts(_ sender: Any?) {
         ShortcutsWindow.show(keyMap: env.keyMap)

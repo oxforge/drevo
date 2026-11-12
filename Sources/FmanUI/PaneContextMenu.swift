@@ -112,7 +112,12 @@ extension PaneViewController {
 
     func revealInFinder() {
         let urls = selectedItems.isEmpty ? [currentDirectory] : selectedItems.map(\.url)
-        NSWorkspace.shared.activateFileViewerSelecting(urls)
+        if FileViewerSetting.isFman {
+            // "Show in Finder" is redirected to fman, so ask Finder directly to open this folder.
+            env.opener.open([currentDirectory], withApplicationAt: URL(fileURLWithPath: "/System/Library/CoreServices/Finder.app"))
+        } else {
+            NSWorkspace.shared.activateFileViewerSelecting(urls)
+        }
     }
 
     func showInfo() {
