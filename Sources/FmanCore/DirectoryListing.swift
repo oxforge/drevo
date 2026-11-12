@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 /// What a listing is sorted by.
@@ -33,10 +34,34 @@ public struct ListingOptions: Equatable, Sendable {
 /// Loads, filters and sorts folder contents.
 public enum DirectoryListing {
     /// All entries of `url`, unfiltered and unsorted.
+    ///
+    /// Uses readdir + lstat with kinds cached per extension: asking Launch Services for
+    /// every file (kind, type, localized name) costs ~100 µs each, which is a full second
+    /// for a 10k-item folder.
     public static func entries(of url: URL, fileManager: FileManager = .default) throws -> [FileItem] {
-        let urls = try fileManager.contentsOfDirectory(
-            at: url, includingPropertiesForKeys: FileItem.resourceKeys, options: [])
-        return urls.compactMap { try? FileItem(url: $0) }
+        let dirPath = url.path
+        guard let dir = opendir(dirPath) else {
+            let code = errno
+            throw NSError(domain: NSCocoaErrorDomain,
+                          code: code == EACCES || code == EPERM ? NSFileReadNoPermissionError : (code == ENOENT ? NSFileReadNoSuchFileError : NSFileReadUnknownError),
+                          userInfo: [NSFilePathErrorKey: dirPath, NSUnderlyingErrorKey: NSError(domain: NSPOSIXErrorDomain, code: Int(code))])
+        }
+        defer { closedir(dir) }
+        var parent = stat()
+        let parentDevice: dev_t? = lstat(dirPath, &parent) == 0 ? parent.st_dev : nil
+        var items: [FileItem] = []
+        let base = dirPath.hasSuffix("/") ? dirPath : dirPath + "/"
+        while let entry = readdir(dir) {
+            let name = withUnsafeBytes(of: entry.pointee.d_name) { raw in
+                String(decoding: raw.prefix(Int(entry.pointee.d_namlen)), as: UTF8.self)
+            }
+            if name == "." || name == ".." { continue }
+            let path = base + name
+            var st = stat()
+            guard lstat(path, &st) == 0 else { continue }
+            items.append(FileItem(path: path, name: name, stat: st, parentDevice: parentDevice))
+        }
+        return items
     }
 
     public static func load(_ url: URL, options: ListingOptions, fileManager: FileManager = .default) throws -> [FileItem] {
@@ -53,30 +78,30 @@ public enum DirectoryListing {
     }
 
     public static func sorted(_ items: [FileItem], by order: FileSort) -> [FileItem] {
-        items.sorted { a, b in
+        // Bridge names once: localizedStandardCompare on native Swift strings re-bridges
+        // both sides on every comparison, which dominated sorting big folders.
+        let names = items.map { NSString(string: $0.name) }
+        let kinds = order.key == .kind ? items.map { NSString(string: $0.kind) } : []
+        func cmp(_ a: NSString, _ b: NSString) -> ComparisonResult { a.localizedStandardCompare(b as String) }
+        let indices = items.indices.sorted { i, j in
+            let a = items[i], b = items[j]
             if order.foldersFirst, a.isContainer != b.isContainer {
                 return a.isContainer
             }
-            let result = compare(a, b, key: order.key)
+            let result: ComparisonResult
+            switch order.key {
+            case .name: result = cmp(names[i], names[j])
+            case .modified: result = compareOptional(a.modified, b.modified)
+            case .size: result = compareOptional(a.size, b.size)
+            case .kind: result = cmp(kinds[i], kinds[j])
+            }
             if result == .orderedSame {
                 // Stable tie-break on name, always ascending, so equal keys read naturally.
-                return a.name.localizedStandardCompare(b.name) == .orderedAscending
+                return cmp(names[i], names[j]) == .orderedAscending
             }
             return order.ascending ? result == .orderedAscending : result == .orderedDescending
         }
-    }
-
-    private static func compare(_ a: FileItem, _ b: FileItem, key: SortKey) -> ComparisonResult {
-        switch key {
-        case .name:
-            return a.name.localizedStandardCompare(b.name)
-        case .modified:
-            return compareOptional(a.modified, b.modified)
-        case .size:
-            return compareOptional(a.size, b.size)
-        case .kind:
-            return a.kind.localizedStandardCompare(b.kind)
-        }
+        return indices.map { items[$0] }
     }
 
     /// nil sorts before any value (folders have no size).

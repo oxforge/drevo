@@ -78,3 +78,18 @@ import Testing
         #expect(InfoPanel.permissionString(0o640) == "rw-r-----")
     }
 }
+
+@MainActor
+@Suite(.serialized) struct AliasTests {
+    @Test func openingAnAliasToAFolderEntersTheTarget() throws {
+        let fx = Fixture()
+        let target = fx.dir("Real/Inside")
+        let data = try target.deletingLastPathComponent().bookmarkData(options: .suitableForBookmarkFile, includingResourceValuesForKeys: nil, relativeTo: nil)
+        try URL.writeBookmarkData(data, to: fx.url.appendingPathComponent("Real alias"))
+        let wc = makeWindow([fx.url, fx.url])
+        let pane = wc.paneGroup.activePane
+        pane.browser.select([fx.url.appendingPathComponent("Real alias")])
+        wc.perform(.open)
+        #expect(pane.currentDirectory.lastPathComponent == "Real")
+    }
+}

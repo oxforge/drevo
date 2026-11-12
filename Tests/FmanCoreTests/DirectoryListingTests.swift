@@ -72,3 +72,36 @@ import Testing
         #expect(try FileItem(url: tmp.url.appendingPathComponent("alpha")).baseName == "alpha")
     }
 }
+
+@Suite struct ListingPerformanceTests {
+    @Test func bigFolderListsQuickly() throws {
+        let tmp = TempDir()
+        for i in 0..<5000 {
+            FileManager.default.createFile(atPath: tmp.url.appendingPathComponent("file-\(i).txt").path, contents: nil)
+        }
+        let start = Date()
+        let items = try DirectoryListing.load(tmp.url, options: ListingOptions())
+        let elapsed = Date().timeIntervalSince(start)
+        #expect(items.count == 5000)
+        #expect(items[1].name == "file-1.txt" && items[2].name == "file-2.txt", "numeric order")
+        // Debug build; release is ~3x faster. Generous bound to catch regressions only.
+        #expect(elapsed < 1.0, "listing 5000 entries took \(elapsed)s")
+    }
+
+    @Test func fastPathMatchesResourceValues() throws {
+        let tmp = TempDir()
+        tmp.file("a.txt", "hello")
+        tmp.dir("Pkg.app/Contents")
+        tmp.file(".dot")
+        let fast = try DirectoryListing.entries(of: tmp.url).sorted { $0.name < $1.name }
+        for item in fast {
+            let slow = try FileItem(url: item.url)
+            #expect(item.isContainer == slow.isContainer, "\(item.name)")
+            #expect(item.isPackage == slow.isPackage, "\(item.name)")
+            #expect(item.isHidden == slow.isHidden, "\(item.name)")
+            #expect(item.size == slow.size, "\(item.name)")
+            #expect(abs((item.modified ?? .distantPast).timeIntervalSince(slow.modified ?? .distantPast)) < 0.01)
+        }
+        #expect(fast.first { $0.name == "a.txt" }?.kind.isEmpty == false)
+    }
+}

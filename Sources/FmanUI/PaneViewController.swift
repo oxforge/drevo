@@ -258,7 +258,9 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
         guard !items.isEmpty else { return }
         if items.count == 1, let item = items.first {
             if item.isContainer { navigate(to: item.url); return }
-            if item.isAlias, let target = try? URL(resolvingAliasFileAt: item.url),
+            // Listings skip alias detection for speed; check when opening.
+            let isAlias = (try? item.url.resourceValues(forKeys: [.isAliasFileKey]).isAliasFile) == true && !item.isSymbolicLink
+            if isAlias, let target = try? URL(resolvingAliasFileAt: item.url),
                let resolved = try? FileItem(url: target), resolved.isContainer {
                 navigate(to: target)
                 return
