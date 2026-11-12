@@ -1,6 +1,5 @@
 import AppKit
 import FmanCore
-import QuickLookThumbnailing
 
 /// Finder-style Miller columns: one table per folder level plus a preview for a selected file.
 @MainActor
@@ -12,7 +11,7 @@ final class ColumnBrowserViewController: NSViewController, FileBrowser {
 
     private(set) var columns: [FolderColumn] = []
     private(set) var focusedIndex = 0
-    private var preview: FilePreviewView?
+    private(set) var preview: FilePreviewView?
 
     private let scrollView = NSScrollView()
     private let stack = NSStackView()
@@ -272,11 +271,13 @@ final class ColumnBrowserViewController: NSViewController, FileBrowser {
         guard let last = columns.last else { return }
         if let preview { stack.removeView(preview); self.preview = nil }
         let selected = last.selectedItems
-        guard selected.count == 1, let item = selected.first else { return }
-        if item.isContainer {
-            appendColumn(for: item.url)
+        guard !selected.isEmpty else { return }
+        if selected.count == 1, selected[0].isContainer {
+            appendColumn(for: selected[0].url)
         } else {
-            let p = FilePreviewView(item: item, relativeDates: preferences.relativeDates)
+            // One file: its preview. Several items: a summary in the same place and width,
+            // so extending the selection doesn't make the columns jump.
+            let p = FilePreviewView(items: selected, relativeDates: preferences.relativeDates)
             preview = p
             stack.addArrangedSubview(p)
             p.widthAnchor.constraint(equalToConstant: Self.columnWidth + 40).isActive = true
@@ -546,81 +547,6 @@ final class ColumnCellView: NSTableCellView, NameEditingCell {
 
     override var backgroundStyle: NSView.BackgroundStyle {
         didSet { chevron.contentTintColor = backgroundStyle == .emphasized ? .alternateSelectedControlTextColor : .tertiaryLabelColor }
-    }
-}
-
-/// Preview column for a selected file: thumbnail and facts.
-@MainActor
-final class FilePreviewView: NSView {
-    let item: FileItem
-    private let imageView = NSImageView()
-
-    init(item: FileItem, relativeDates: Bool) {
-        self.item = item
-        super.init(frame: .zero)
-        imageView.image = FileIcons.shared.icon(for: item.url)
-        imageView.imageScaling = .scaleProportionallyUpOrDown
-
-        let title = NSTextField(wrappingLabelWithString: item.name)
-        title.font = .systemFont(ofSize: 13, weight: .semibold)
-        title.alignment = .center
-        title.maximumNumberOfLines = 3
-        let subtitle = NSTextField(labelWithString: [item.kind, item.size.map { Formatting.size($0) }].compactMap { $0 }.joined(separator: " — "))
-        subtitle.font = .systemFont(ofSize: 11)
-        subtitle.textColor = .secondaryLabelColor
-        subtitle.alignment = .center
-
-        let grid = NSGridView(views: [
-            [Self.key("Created"), Self.value(Formatting.date(item.created, relative: relativeDates))],
-            [Self.key("Modified"), Self.value(Formatting.date(item.modified, relative: relativeDates))],
-        ])
-        grid.column(at: 0).xPlacement = .trailing
-        grid.rowSpacing = 4
-        grid.columnSpacing = 8
-
-        let stack = NSStackView(views: [imageView, title, subtitle, grid])
-        stack.orientation = .vertical
-        stack.alignment = .centerX
-        stack.spacing = 8
-        stack.setCustomSpacing(16, after: imageView)
-        stack.setCustomSpacing(16, after: subtitle)
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: 24),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
-            imageView.widthAnchor.constraint(equalToConstant: 128),
-            imageView.heightAnchor.constraint(equalToConstant: 128),
-            title.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor),
-        ])
-        loadThumbnail()
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    private static func key(_ s: String) -> NSTextField {
-        let l = NSTextField(labelWithString: s)
-        l.font = .systemFont(ofSize: 11)
-        l.textColor = .secondaryLabelColor
-        return l
-    }
-
-    private static func value(_ s: String) -> NSTextField {
-        let l = NSTextField(labelWithString: s)
-        l.font = .systemFont(ofSize: 11)
-        return l
-    }
-
-    private func loadThumbnail() {
-        let scale = NSScreen.main?.backingScaleFactor ?? 2
-        let request = QLThumbnailGenerator.Request(fileAt: item.url, size: CGSize(width: 128, height: 128), scale: scale, representationTypes: .thumbnail)
-        QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { [weak self] rep, _ in
-            guard let rep else { return }
-            let image = rep.nsImage
-            DispatchQueue.main.async { self?.imageView.image = image }
-        }
     }
 }
 
