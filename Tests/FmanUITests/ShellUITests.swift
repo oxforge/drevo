@@ -124,3 +124,55 @@ import Testing
         #expect(try String(contentsOf: fx.url.appendingPathComponent("out.txt"), encoding: .utf8) == "3 x y\n")
     }
 }
+
+/// The real command path: the shell setup is loaded once and reused.
+@MainActor
+@Suite(.serialized) struct ShellSetupUITests {
+    let fx = Fixture()
+
+    func window() -> MainWindowController {
+        makeWindow([fx.url, fx.url], env: testEnvironment(trash: fx.url.appendingPathComponent(".T")))
+    }
+
+    func waitFor(_ timeout: TimeInterval = 10, _ condition: () -> Bool) -> Bool {
+        let end = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < end { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+        return condition()
+    }
+
+    func runAndWait(_ wc: MainWindowController, _ command: String) -> Bool {
+        wc.commandBar.field.stringValue = command
+        wc.commandBar.submit(inTerminal: false)
+        return waitFor { !wc.shell.isRunning }
+    }
+
+    @Test func firstCommandLoadsTheSetupLaterOnesReuseIt() {
+        let wc = window()
+        let console = wc.workspace.console
+        #expect(runAndWait(wc, "ll; echo $FMAN_TEST_SETUP"))
+        #expect(console.transcript.contains("Loading your shell setup"))
+        #expect(console.transcript.contains("SNAPSHOT-ALIAS\nloaded\n"), "aliases and exported variables from the config")
+        let loads = console.transcript.components(separatedBy: "Loading your shell setup").count - 1
+        #expect(runAndWait(wc, "ll"))
+        #expect(console.transcript.components(separatedBy: "Loading your shell setup").count - 1 == loads, "second command reuses the setup")
+        #expect(console.transcript.components(separatedBy: "SNAPSHOT-ALIAS").count - 1 == 2)
+    }
+
+    @Test func focusingTheCommandLineStartsLoading() {
+        let wc = window()
+        #expect(wc.env.shellSetup.snapshot == nil)
+        wc.commandBar.focus()
+        #expect(waitFor { wc.env.shellSetup.snapshot != nil })
+        #expect(runAndWait(wc, "ll"))
+        #expect(!wc.workspace.console.transcript.contains("Loading your shell setup"), "already loaded while typing")
+    }
+
+    @Test func turningTheConfigOffUsesAPlainLoginShell() {
+        let wc = window()
+        wc.env.preferences.interactiveShell = false
+        #expect(runAndWait(wc, "ll 2>&1; echo done"))
+        #expect(wc.workspace.console.transcript.contains("done"))
+        #expect(!wc.workspace.console.transcript.contains("SNAPSHOT-ALIAS"))
+        #expect(wc.env.shellSetup.snapshot == nil, "nothing loaded")
+    }
+}

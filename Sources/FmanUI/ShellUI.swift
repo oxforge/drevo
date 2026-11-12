@@ -103,6 +103,15 @@ final class ConsoleViewController: NSViewController {
         stopButton.isEnabled = true
     }
 
+    /// A dim status line (not command output).
+    func note(_ text: String) {
+        _ = view
+        appendAttributed(NSAttributedString(string: text + "\n", attributes: [
+            .font: NSFont.systemFont(ofSize: 11),
+            .foregroundColor: NSColor.secondaryLabelColor,
+        ]))
+    }
+
     func append(_ text: String, isError: Bool) {
         appendAttributed(NSAttributedString(string: ANSI.strip(text), attributes: [
             .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular),
@@ -149,7 +158,9 @@ final class ConsoleViewController: NSViewController {
 /// ↑/↓ walk history, Esc goes back to the pane.
 @MainActor
 final class CommandBar: NSView, NSTextFieldDelegate {
-    let field = NSTextField()
+    let field = FocusReportingTextField()
+    /// The command line got keyboard focus.
+    var onFocus: (() -> Void)?
     private let prompt = NSTextField(labelWithString: "")
     var onRun: ((String) -> Void)?
     var onRunInTerminal: ((String) -> Void)?
@@ -178,6 +189,7 @@ final class CommandBar: NSView, NSTextFieldDelegate {
             string: "Shell command in this folder   ↩ run · ⌘↩ in Terminal · ⌥↩ insert selection · ! focuses",
             attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.placeholderTextColor])
         field.delegate = self
+        field.onFocus = { [weak self] in self?.onFocus?() }
         field.cell?.isScrollable = true
         field.cell?.wraps = false
         let terminal = ConsoleViewController.iconButton("terminal", "Run in Terminal (⌘↩)", self, #selector(runInTerminalClicked))
@@ -310,24 +322,62 @@ final class ShellSession {
     private(set) var running: ShellCommand?
     private let console: ConsoleViewController
     private let preferences: Preferences
+    private let setup: ShellSetup
     var onFinish: (() -> Void)?
     /// Tests use a shell without the user's rc files.
     var shellOverride: (shell: String, flags: [String])?
+    /// A command is waiting for the shell setup to load.
+    private var waitingForSetup = false
 
-    init(console: ConsoleViewController, preferences: Preferences) {
+    init(console: ConsoleViewController, preferences: Preferences, setup: ShellSetup) {
         self.console = console
         self.preferences = preferences
+        self.setup = setup
     }
 
-    var isRunning: Bool { running?.isRunning ?? false }
+    var isRunning: Bool { (running?.isRunning ?? false) || waitingForSetup }
 
+    /// Called when the command line gets focus: load the shell setup while the user types.
+    func prepare() {
+        if shellOverride == nil, preferences.interactiveShell { setup.prepare() }
+    }
+
+    /// Runs `command` in `directory`. With "Load interactive config" on (zsh/bash), it uses
+    /// the shell setup loaded once instead of re-reading ~/.zshrc for every command.
     @discardableResult
     func run(_ command: String, in directory: URL) -> Bool {
         guard !isRunning else { return false }
-        let shell = shellOverride?.shell ?? UserShell.loginShell()
-        let flags = shellOverride?.flags ?? UserShell.flags(interactive: preferences.interactiveShell)
-        let cmd = ShellCommand(command: command, directory: directory, shell: shell, flags: flags)
         let started = Date()
+        console.begin(command: command, directory: directory)
+        if let o = shellOverride {
+            return start(ShellCommand(command: command, directory: directory, shell: o.shell, flags: o.flags), started: started)
+        }
+        guard preferences.interactiveShell else {
+            return start(ShellCommand(command: command, directory: directory, shell: setup.shell, flags: UserShell.flags(interactive: false)), started: started)
+        }
+        guard setup.isSupported else {
+            return start(ShellCommand(command: command, directory: directory, shell: setup.shell, flags: UserShell.flags(interactive: true)), started: started)
+        }
+        if let snapshot = setup.freshSnapshot {
+            return start(snapshot.command(command, in: directory, definitionsFile: setup.definitionsFile), started: started)
+        }
+        console.note("Loading your shell setup — once; later commands reuse it until your shell config changes.")
+        waitingForSetup = true
+        setup.withSnapshot { [weak self] snapshot in
+            guard let self, self.waitingForSetup else { return } // stopped meanwhile
+            self.waitingForSetup = false
+            if let snapshot {
+                self.start(snapshot.command(command, in: directory, definitionsFile: self.setup.definitionsFile), started: started)
+            } else {
+                self.console.note("Couldn’t load your shell setup (\(self.setup.lastError ?? "unknown error")); running with a full shell instead.")
+                self.start(ShellCommand(command: command, directory: directory, shell: self.setup.shell, flags: UserShell.flags(interactive: true)), started: started)
+            }
+        }
+        return true
+    }
+
+    @discardableResult
+    private func start(_ cmd: ShellCommand, started: Date) -> Bool {
         cmd.onOutput = { [weak self] text, isError in
             onMainRunLoop { self?.console.append(text, isError: isError) }
         }
@@ -339,7 +389,6 @@ final class ShellSession {
                 self.onFinish?()
             }
         }
-        console.begin(command: command, directory: directory)
         do {
             try cmd.start()
             running = cmd
@@ -352,6 +401,11 @@ final class ShellSession {
     }
 
     func stop() {
+        if waitingForSetup {
+            waitingForSetup = false
+            console.finish(status: nil, signal: SIGINT, duration: 0)
+            return
+        }
         running?.interrupt()
     }
 }
@@ -364,4 +418,15 @@ nonisolated func onMainRunLoop(_ block: @escaping @MainActor () -> Void) {
         MainActor.assumeIsolated { block() }
     }
     CFRunLoopWakeUp(main)
+}
+
+/// A text field that says when it receives keyboard focus.
+final class FocusReportingTextField: NSTextField {
+    var onFocus: (() -> Void)?
+
+    override func becomeFirstResponder() -> Bool {
+        let ok = super.becomeFirstResponder()
+        if ok { onFocus?() }
+        return ok
+    }
 }

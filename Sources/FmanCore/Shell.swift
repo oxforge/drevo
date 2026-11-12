@@ -53,6 +53,8 @@ public final class ShellCommand: @unchecked Sendable {
     public let shell: String
     public let flags: [String]
     public var extraEnvironment: [String: String] = [:]
+    /// The environment to start from; nil = this process's environment.
+    public var baseEnvironment: [String: String]?
     public var onOutput: ((String, _ isError: Bool) -> Void)?
     /// Exit status, or nil if a signal ended it (with the signal number).
     public var onExit: ((_ status: Int32?, _ signal: Int32?) -> Void)?
@@ -117,7 +119,7 @@ public final class ShellCommand: @unchecked Sendable {
         posix_spawn_file_actions_addchdir_np(&actions, directory.path)
 
         let args = [shell] + flags + ["-c", command]
-        var env = ProcessInfo.processInfo.environment
+        var env = baseEnvironment ?? ProcessInfo.processInfo.environment
         env["PWD"] = directory.path
         env["TERM"] = "dumb"
         env["FMAN"] = "1"

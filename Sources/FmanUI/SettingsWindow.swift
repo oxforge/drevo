@@ -23,6 +23,18 @@ final class SettingsModel: ObservableObject {
 
     var prefs: Preferences { env.preferences }
 
+    var shellSetupStatus: String {
+        _ = tick
+        let setup = env.shellSetup
+        if !setup.isSupported { return "\((setup.shell as NSString).lastPathComponent): config is loaded for every command." }
+        if setup.isLoading { return "Loading…" }
+        if let error = setup.lastError { return "Last load failed: \(error)" }
+        if let s = setup.snapshot, let d = setup.lastCaptureDuration {
+            return String(format: "Loaded in %.1f s, %@.", d, RelativeDateTimeFormatter().localizedString(for: s.capturedAt, relativeTo: Date()))
+        }
+        return "Loads the first time you use the command line."
+    }
+
     func binding<T>(_ keyPath: ReferenceWritableKeyPath<Preferences, T>) -> Binding<T> {
         Binding(get: { [unowned self] in _ = self.tick; return self.prefs[keyPath: keyPath] },
                 set: { [unowned self] in self.prefs[keyPath: keyPath] = $0 })
@@ -206,9 +218,14 @@ private struct ShellTab: View {
             LabeledContent("Shell") {
                 Text("\(UserShell.loginShell()) (your login shell)").foregroundStyle(.secondary)
             }
-            Toggle("Load interactive config (~/.zshrc, aliases)", isOn: model.binding(\.interactiveShell))
-            Text("Commands run as “shell -l -i -c command” in the active pane’s folder. Turn this off if your shell config is slow or prints prompts.")
+            Toggle("Use my shell config (~/.zshrc: aliases, functions, PATH)", isOn: model.binding(\.interactiveShell))
+            Text("fman loads your config once (a full login shell) and reuses it, so each command starts in milliseconds. It reloads when your startup files change, or after an hour. Not reused: `setopt` options and unexported variables.")
                 .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Button("Reload Shell Config") { model.env.shellSetup.reload() }
+                    .disabled(!model.env.shellSetup.isSupported)
+                Text(model.shellSetupStatus).font(.caption).foregroundStyle(.secondary)
+            }
             Picker("Editor for F4", selection: Binding(
                 get: { model.prefs.editorAppPath ?? "" },
                 set: { model.prefs.editorAppPath = $0.isEmpty ? nil : $0 })) {

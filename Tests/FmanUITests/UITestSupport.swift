@@ -75,7 +75,15 @@ func testEnvironment(trash: URL, prompts: ScriptedPrompts? = nil, opener: Record
     let opener = opener ?? RecordingOpener()
     let ops = OperationsCenter(ops: FileOperations(trash: FolderTrash(folder: trash)), prompts: prompts)
     ops.runTransfersSynchronously = true
-    let env = AppEnvironment.ephemeral(opener: opener, operations: ops)
+    // A shell setup that reads a scratch config and writes a scratch cache, never the user's.
+    let scratch = trash.deletingLastPathComponent().appendingPathComponent("zdot-\(UUID().uuidString)")
+    try? FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+    try? "alias ll='echo SNAPSHOT-ALIAS'\nexport FMAN_TEST_SETUP=loaded\n".write(to: scratch.appendingPathComponent(".zshrc"), atomically: true, encoding: .utf8)
+    let setup = ShellSetup(shell: "/bin/zsh", definitionsFile: scratch.appendingPathComponent("defs.sh"))
+    var captureEnv = ProcessInfo.processInfo.environment
+    captureEnv["ZDOTDIR"] = scratch.path
+    setup.captureEnvironment = captureEnv
+    let env = AppEnvironment.ephemeral(opener: opener, operations: ops, shellSetup: setup)
     env.pasteboard = NSPasteboard(name: NSPasteboard.Name("fman.tests.\(UUID().uuidString)"))
     return env
 }

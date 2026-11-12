@@ -152,7 +152,11 @@ keys or clashes are reported.
 The bar under the panes runs commands in the active pane's folder:
 
 - **Return** runs the command with your login shell, the one set in your user account
-  (the same one Terminal uses), as `shell -l -i -c "…"`. PATH, aliases and functions match Terminal.
+  (the same one Terminal uses). fman loads your shell config once (`shell -l -i`) and
+  reuses its PATH, environment, aliases and functions, so each command starts in
+  milliseconds instead of re-running `~/.zshrc`. It reloads when a startup file changes,
+  after an hour, or via Settings ▸ Shell ▸ Reload (zsh and bash; other shells load their
+  config for every command). PATH, aliases and functions match Terminal.
   Output streams into the console (⌥⌘J), with stderr in red, then the exit status and
   timing. ⌘. stops it (Ctrl-C to the whole process group).
 - **⌘Return** runs it in your terminal app instead, for interactive tools like vim, top
@@ -160,8 +164,9 @@ The bar under the panes runs commands in the active pane's folder:
 - **⌥Return** inserts the selected names, shell-quoted (⇧⌥Return inserts full paths).
 - **↑ / ↓** walk the history. **Esc** returns to the pane.
 
-Commands get stdin from `/dev/null` and `TERM=dumb`. If your shell config is slow or
-prints prompts, turn off "Load interactive config" in Settings ▸ Shell.
+Commands get stdin from `/dev/null` and `TERM=dumb`. Not reused from your config:
+`setopt` options and unexported variables. To skip `~/.zshrc` entirely, turn off "Use my
+shell config" in Settings ▸ Shell.
 
 ## Project layout
 

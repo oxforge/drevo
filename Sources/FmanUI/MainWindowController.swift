@@ -100,7 +100,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
         let group = PaneGroupViewController(directories: directories, viewModes: viewModes, sorts: sorts, env: env)
         workspace = WorkspaceViewController(paneGroup: group)
         commandBar = CommandBar(preferences: env.preferences)
-        shell = ShellSession(console: workspace.console, preferences: env.preferences)
+        shell = ShellSession(console: workspace.console, preferences: env.preferences, setup: env.shellSetup)
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1240, height: 760),
@@ -226,6 +226,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
             }
         }
         commandBar.onEscape = { [weak self] in self?.paneGroup.activePane.focus() }
+        commandBar.onFocus = { [weak self] in self?.shell.prepare() }
         commandBar.onToggleConsole = { [weak self] in self?.perform(.toggleConsole) }
         commandBar.selectionProvider = { [weak self] fullPaths in
             guard let pane = self?.paneGroup.activePane else { return [] }
