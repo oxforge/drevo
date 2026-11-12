@@ -76,6 +76,8 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
             self?.navigate(to: url, selecting: nil)
         }
         header.onClick = { [weak self] in self?.activate(focus: true) }
+        header.onPathAreaClick = { [weak self] in self?.beginPathEditing() }
+        header.pathBar.onEditRequest = { [weak self] in self?.beginPathEditing() }
         header.onPathCommit = { [weak self] text in self?.commitPath(text) }
         header.onPathComplete = { [weak self] text in
             guard let self else { return [] }
@@ -216,7 +218,8 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
         if let prefill {
             header.beginPathEditing(prefill, selectAll: false)
         } else {
-            header.beginPathEditing(Formatting.abbreviatedPath(currentDirectory) + "/", selectAll: true)
+            // The full path, all selected: ready to copy or to type over.
+            header.beginPathEditing(currentDirectory.path, selectAll: true)
         }
     }
 

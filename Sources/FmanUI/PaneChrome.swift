@@ -6,6 +6,8 @@ import FmanCore
 @MainActor
 final class PathBarView: NSView {
     var onNavigate: ((URL) -> Void)?
+    /// Clicking the current folder's segment edits the path (Windows Explorer style).
+    var onEditRequest: (() -> Void)?
     private let stack = NSStackView()
     private(set) var url: URL?
     var isActive = false { didSet { refreshColors() } }
@@ -143,7 +145,11 @@ final class PathBarView: NSView {
     }
 
     @objc private func segmentClicked(_ sender: SegmentButton) {
-        onNavigate?(sender.url)
+        if sender.isLast {
+            onEditRequest?()
+        } else {
+            onNavigate?(sender.url)
+        }
     }
 
     @objc private func showHidden(_ sender: NSButton) {
@@ -205,6 +211,8 @@ final class PaneHeaderView: NSView, NSTextFieldDelegate, NSSearchFieldDelegate {
     private let accentLine = NSView()
     private let separator = NSBox()
     var onClick: (() -> Void)?
+    /// A click on the path area that isn't a folder segment: start editing the path.
+    var onPathAreaClick: (() -> Void)?
 
     var isActive = false {
         didSet {
@@ -281,6 +289,15 @@ final class PaneHeaderView: NSView, NSTextFieldDelegate, NSSearchFieldDelegate {
 
     override func mouseDown(with event: NSEvent) {
         onClick?()
+        // Segment buttons take their own clicks; anything else left of the sort/filter
+        // controls (blank space, chevrons) turns the path into an editable field.
+        let point = convert(event.locationInWindow, from: nil)
+        let controlsStart = accessoryStack.isHidden || accessoryStack.arrangedSubviews.allSatisfy(\.isHidden)
+            ? bounds.maxX : accessoryStack.frame.minX
+        if !isEditingPath, point.x < controlsStart - 4 {
+            onPathAreaClick?()
+            return
+        }
         super.mouseDown(with: event)
     }
 
@@ -295,6 +312,8 @@ final class PaneHeaderView: NSView, NSTextFieldDelegate, NSSearchFieldDelegate {
         window?.makeFirstResponder(pathField)
         let length = (text as NSString).length
         pathField.currentEditor()?.selectedRange = selectAll ? NSRange(location: 0, length: length) : NSRange(location: length, length: 0)
+        // Long paths: keep the current folder (the end) in view.
+        (pathField.currentEditor() as? NSTextView)?.scrollRangeToVisible(NSRange(location: length, length: 0))
     }
 
     func endPathEditing() {

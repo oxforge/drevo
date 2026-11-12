@@ -107,7 +107,7 @@ system-wide shortcut; a unit test checks the defaults against that list.
 | Copy, Cut, Paste, Move here | ⌘C, ⌘X, ⌘V, ⌥⌘V |
 | Duplicate, Make alias, Copy path, Get Info | ⌘D, ⌃⌘A, ⌥⌘C, ⌘I |
 | Undo / Redo | ⌘Z / ⇧⌘Z |
-| Go to folder (Tab completes) | ⌘L, ⇧⌘G, or just type `/` or `~` |
+| Go to folder (Tab completes) | ⌘L, ⇧⌘G, type `/` or `~`, or click the path bar's blank space / current folder (full path, selected) |
 | Filter this folder (Esc clears) | ⌘F |
 | Show hidden files | ⇧⌘. |
 | List / Columns | ⌘2 / ⌘3 |
