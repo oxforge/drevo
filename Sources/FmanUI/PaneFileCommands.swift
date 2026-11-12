@@ -23,6 +23,10 @@ extension PaneViewController {
         case .makeAlias: aliasSelection()
         case .copyPath: copyPaths()
         case .pasteMove: pasteFiles(move: true)
+        case .edit: editSelection()
+        case .showPackageContents: showPackageContents()
+        case .revealInFinder: revealInFinder()
+        case .getInfo: showInfo()
         default: return false
         }
         return true
@@ -33,7 +37,8 @@ extension PaneViewController {
         switch id {
         case .rename: return selectedItems.count == 1
         case .moveToTrash, .deleteImmediately, .duplicate, .makeAlias: return hasSelection
-        case .newFolder, .newFile, .copyPath: return true
+        case .newFolder, .newFile, .copyPath, .edit, .revealInFinder, .getInfo: return true
+        case .showPackageContents: return selectedItems.count == 1 && selectedItems[0].isPackage
         case .pasteMove: return Self.pasteboardFileURLs(env.pasteboard).isEmpty == false
         default: return false
         }

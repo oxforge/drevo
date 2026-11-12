@@ -293,11 +293,14 @@ public final class Transfer: @unchecked Sendable {
         (try? url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true
     }
 
-    /// At most ~30 updates a second unless forced.
+    /// Byte updates at most ~30 a second; item boundaries (forced) always report and
+    /// don't delay the next byte update.
     private func report(_ p: TransferProgress, force: Bool) {
-        let now = Date()
-        guard force || now.timeIntervalSince(lastReport) > 0.033 else { return }
-        lastReport = now
+        if !force {
+            let now = Date()
+            guard now.timeIntervalSince(lastReport) > 0.033 else { return }
+            lastReport = now
+        }
         onProgress?(p)
     }
 }

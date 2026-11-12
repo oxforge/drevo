@@ -226,6 +226,14 @@ final class ColumnBrowserViewController: NSViewController, FileBrowser {
             guard let self else { return nil }
             return self.delegate?.browser(self, menuFor: items)
         }
+        col.onDrop = { [weak self] urls, dest, kind in
+            guard let self else { return }
+            self.delegate?.browser(self, drop: urls, onto: dest, kind: kind)
+        }
+        col.onDragEnded = { [weak self] in
+            guard let self else { return }
+            self.delegate?.browserDragEnded(self)
+        }
         columns.append(col)
         if let preview { stack.removeView(preview); self.preview = nil }
         stack.addArrangedSubview(col.container)
@@ -320,6 +328,8 @@ final class FolderColumn: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     var keyHandler: ((NSEvent) -> Bool)?
     var onDoubleClick: ((FileItem) -> Void)?
     var menuProvider: (([FileItem]) -> NSMenu?)?
+    var onDrop: (([URL], URL, TransferKind) -> Void)?
+    var onDragEnded: (() -> Void)?
 
     let tableView = FileTableView()
     let container = NSView()
@@ -355,6 +365,7 @@ final class FolderColumn: NSObject, NSTableViewDataSource, NSTableViewDelegate {
             return self.menuProvider?(rows.compactMap { $0 < self.items.count ? self.items[$0] : nil })
         }
 
+        FileDragDrop.configure(tableView)
         scrollView.documentView = tableView
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
@@ -467,6 +478,29 @@ final class FolderColumn: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, typeSelectStringFor tableColumn: NSTableColumn?, row: Int) -> String? {
         items[row].name
+    }
+
+    // MARK: Drag & drop
+
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        row < items.count ? FileDragDrop.writer(for: items[row]) : nil
+    }
+
+    func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
+                   proposedDropOperation op: NSTableView.DropOperation) -> NSDragOperation {
+        FileDragDrop.validate(tableView, info: info, row: row, operation: op, items: items, directory: directory)
+    }
+
+    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation op: NSTableView.DropOperation) -> Bool {
+        let urls = FileDragDrop.fileURLs(info)
+        guard !urls.isEmpty else { return false }
+        let dest = FileDragDrop.destination(row: row, operation: op, items: items, directory: directory)
+        onDrop?(urls, dest, FileDragDrop.kind(info, sources: urls, destination: dest))
+        return true
+    }
+
+    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        onDragEnded?()
     }
 }
 

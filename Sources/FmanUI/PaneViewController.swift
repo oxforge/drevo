@@ -149,6 +149,14 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
         onChange?(self)
     }
 
+    /// Shows a directory even if it's a package (Show Package Contents).
+    func enterDirectory(_ url: URL) {
+        history.visit(url)
+        browser.display(url, selecting: nil)
+        refreshChrome()
+        onChange?(self)
+    }
+
     func reload() {
         browser.reload(options: env.preferences.listingOptions(sort: sort, filter: filter))
         refreshChrome()
@@ -271,5 +279,20 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
 
     func browser(_ browser: FileBrowser, open item: FileItem) {
         open([item])
+    }
+
+    func browser(_ browser: FileBrowser, drop urls: [URL], onto destination: URL, kind: TransferKind) {
+        activate(focus: true)
+        operations.transfer(kind, urls, to: destination, window: view.window) { [weak self] result in
+            guard let self else { return }
+            if destination.standardizedFileURL.path == self.currentDirectory.standardizedFileURL.path {
+                self.reload(selecting: result.outputs)
+            }
+        }
+    }
+
+    func browserDragEnded(_ browser: FileBrowser) {
+        // Items dragged to another app may have moved out of this folder.
+        reload()
     }
 }

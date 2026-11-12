@@ -16,6 +16,10 @@ protocol FileBrowserDelegate: AnyObject {
     func browser(_ browser: FileBrowser, open item: FileItem)
     /// Context menu for the clicked items (empty = folder background).
     func browser(_ browser: FileBrowser, menuFor items: [FileItem]) -> NSMenu?
+    /// Files were dropped onto `destination` (a folder row or the shown folder).
+    func browser(_ browser: FileBrowser, drop urls: [URL], onto destination: URL, kind: TransferKind)
+    /// A drag that started here ended (items may have moved away).
+    func browserDragEnded(_ browser: FileBrowser)
 }
 
 extension FileBrowserDelegate {

@@ -106,7 +106,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
             self?.saveState()
         }
         group.onPaneChange = { [weak self] p in
-            if p === self?.paneGroup.activePane { self?.refreshWindowChrome() }
+            if p === self?.paneGroup.activePane {
+                self?.refreshWindowChrome()
+                self?.refreshQuickLook()
+            }
             self?.saveState()
         }
         sidebar.onNavigate = { [weak self] url in
@@ -168,6 +171,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
         case .biggerRows: prefs.rowSize = RowSize(rawValue: min(2, prefs.rowSize.rawValue + 1))!
         case .smallerRows: prefs.rowSize = RowSize(rawValue: max(0, prefs.rowSize.rawValue - 1))!
         case .newWindow: (NSApp.delegate as? AppDelegate)?.newWindow(nil)
+        case .quickLook: toggleQuickLook()
         case .addToSidebar:
             let pane = paneGroup.activePane
             let folders = pane.selectedItems.filter(\.isContainer).map(\.url)
@@ -191,8 +195,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
         case .nextPane, .previousPane, .swapPanes, .openInOtherPane, .removePane: return paneGroup.panes.count > 1
         case .addPane: return paneGroup.panes.count < 4
         case .copyToOtherPane, .moveToOtherPane: return !pane.selectedItems.isEmpty
-        case .rename, .newFolder, .newFile, .moveToTrash, .deleteImmediately, .duplicate, .makeAlias, .copyPath, .pasteMove:
+        case .rename, .newFolder, .newFile, .moveToTrash, .deleteImmediately, .duplicate, .makeAlias, .copyPath, .pasteMove,
+             .edit, .showPackageContents, .revealInFinder, .getInfo:
             return pane.canPerformFileCommand(id)
+        case .quickLook: return !pane.selectedItems.isEmpty
         case .enclosingFolder, .levelUp, .levelDown, .goHome, .goDesktop, .goDocuments, .goDownloads,
              .goApplications, .goUtilities, .goVolumes, .listView, .columnsView, .toggleHidden,
              .toggleStatusBar, .toggleKeyHints, .toggleCommandLine, .toggleSidebar, .biggerRows,

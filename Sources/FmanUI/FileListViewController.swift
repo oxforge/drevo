@@ -76,6 +76,7 @@ final class FileListViewController: NSViewController, FileBrowser, NSTableViewDa
             return self.delegate?.browser(self, menuFor: items)
         }
 
+        FileDragDrop.configure(tableView)
         scrollView.documentView = tableView
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
@@ -263,6 +264,29 @@ final class FileListViewController: NSViewController, FileBrowser, NSTableViewDa
 
     func tableView(_ tableView: NSTableView, typeSelectStringFor tableColumn: NSTableColumn?, row: Int) -> String? {
         tableColumn?.identifier.rawValue == Column.name.rawValue ? visibleItems[row].name : nil
+    }
+
+    // MARK: Drag & drop
+
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        row < visibleItems.count ? FileDragDrop.writer(for: visibleItems[row]) : nil
+    }
+
+    func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
+                   proposedDropOperation op: NSTableView.DropOperation) -> NSDragOperation {
+        FileDragDrop.validate(tableView, info: info, row: row, operation: op, items: visibleItems, directory: currentDirectory)
+    }
+
+    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation op: NSTableView.DropOperation) -> Bool {
+        let urls = FileDragDrop.fileURLs(info)
+        let dest = FileDragDrop.destination(row: row, operation: op, items: visibleItems, directory: currentDirectory)
+        guard !urls.isEmpty else { return false }
+        delegate?.browser(self, drop: urls, onto: dest, kind: FileDragDrop.kind(info, sources: urls, destination: dest))
+        return true
+    }
+
+    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        delegate?.browserDragEnded(self)
     }
 }
 
