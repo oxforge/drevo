@@ -48,3 +48,15 @@ protocol FileBrowser: AnyObject {
     /// The table that hosts the current directory, for editing and drag & drop.
     var activeTableView: FileTableView? { get }
 }
+
+extension FileBrowser {
+    /// Starts in-place renaming of `url` in the current directory.
+    @discardableResult
+    func beginRename(_ url: URL, completion: @escaping (String?) -> Void) -> Bool {
+        let path = url.standardizedFileURL.path
+        guard let table = activeTableView,
+              let row = visibleItems.firstIndex(where: { $0.url.standardizedFileURL.path == path }) else { return false }
+        table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        return InlineRenamer.begin(table: table, row: row, item: visibleItems[row], completion: completion)
+    }
+}

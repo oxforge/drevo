@@ -222,7 +222,7 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
         case .goVolumes: navigate(to: URL(fileURLWithPath: "/Volumes"))
         case .listView: setViewMode(.list)
         case .columnsView: setViewMode(.columns)
-        default: return false
+        default: return performFileCommand(id)
         }
         return true
     }

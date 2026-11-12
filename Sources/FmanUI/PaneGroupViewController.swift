@@ -112,6 +112,10 @@ final class PaneGroupViewController: NSViewController, NSSplitViewDelegate {
             addPane()
         case .removePane:
             removeActivePane()
+        case .copyToOtherPane:
+            transferToTarget(.copy)
+        case .moveToOtherPane:
+            transferToTarget(.move)
         default:
             return false
         }
@@ -137,6 +141,38 @@ final class PaneGroupViewController: NSViewController, NSSplitViewDelegate {
         let a = activePane
         let folder = a.selectedItems.count == 1 && a.selectedItems[0].isContainer ? a.selectedItems[0].url : a.currentDirectory
         target.navigate(to: folder)
+    }
+
+    /// F5/F6: the active pane's selection into the target pane's folder.
+    func transferToTarget(_ kind: TransferKind) {
+        let source = activePane
+        let urls = source.selectedItems.map(\.url)
+        guard !urls.isEmpty else { NSSound.beep(); return }
+        let target = targetPane
+        let proposed = target?.currentDirectory ?? source.currentDirectory
+        let window = view.window
+        let run: (URL) -> Void = { [weak self] dest in
+            guard let self else { return }
+            guard dest.isDirectoryOnDisk else {
+                self.env.operations.prompts.showError("“\(dest.path)” isn’t a folder.", detail: nil, in: window)
+                return
+            }
+            self.env.operations.transfer(kind, urls, to: dest, window: window) { result in
+                // Show the results where they landed; keep focus where it was.
+                for pane in self.panes where pane.currentDirectory.standardizedFileURL.path == dest.standardizedFileURL.path {
+                    pane.reload(selecting: result.outputs)
+                }
+                source.reload()
+            }
+        }
+        if env.preferences.confirmTransfers || target == nil {
+            env.operations.prompts.askDestination(kind: kind, count: urls.count, proposed: proposed, in: window) { dest in
+                if let dest { run(dest) }
+                source.focus()
+            }
+        } else {
+            run(proposed)
+        }
     }
 
     func addPane() {

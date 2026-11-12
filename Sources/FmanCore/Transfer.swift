@@ -97,6 +97,8 @@ public struct TransferProgress: Sendable, Equatable {
     public var completedItems = 0
     public var currentName = ""
 
+    public init() {}
+
     public var fraction: Double {
         if totalBytes > 0 { return min(1, Double(completedBytes) / Double(totalBytes)) }
         return totalItems > 0 ? Double(completedItems) / Double(totalItems) : 0

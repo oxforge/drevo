@@ -471,8 +471,9 @@ final class FolderColumn: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 }
 
 /// Name cell with a chevron for folders.
-final class ColumnCellView: NSTableCellView {
+final class ColumnCellView: NSTableCellView, NameEditingCell {
     private let name = NameCellView(frame: .zero)
+    var nameLabel: NSTextField { name.label }
     private let chevron = NSImageView()
 
     override init(frame frameRect: NSRect) {

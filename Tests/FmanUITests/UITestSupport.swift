@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+@testable import FmanCore
 @testable import FmanUI
 
 /// A scratch folder deleted when the value goes away.
@@ -39,9 +40,43 @@ final class RecordingOpener: FileOpening {
     func open(_ urls: [URL], withApplicationAt app: URL) { opened.append(urls) }
 }
 
+/// Answers prompts from a script instead of showing sheets.
+@MainActor
+final class ScriptedPrompts: UserPrompts {
+    var deleteAnswer = true
+    var destination: URL??  // nil = accept proposed; .some(nil) = cancel
+    nonisolated(unsafe) var conflictAnswer = ConflictDecision(.keepBoth)
+    nonisolated(unsafe) var conflicts: [Conflict] = []
+    var errors: [String] = []
+    var askedDestination: URL?
+
+    func confirmDelete(_ urls: [URL], in window: NSWindow?, then: @escaping (Bool) -> Void) { then(deleteAnswer) }
+    func askDestination(kind: TransferKind, count: Int, proposed: URL, in window: NSWindow?, then: @escaping (URL?) -> Void) {
+        askedDestination = proposed
+        then(destination ?? proposed)
+    }
+    nonisolated func resolveConflict(_ conflict: Conflict, in window: NSWindow?) -> ConflictDecision {
+        conflicts.append(conflict)
+        return conflictAnswer
+    }
+    func showError(_ message: String, detail: String?, in window: NSWindow?) { errors.append(message + " " + (detail ?? "")) }
+}
+
+/// An environment that never touches the real Trash, clipboard or apps.
+@MainActor
+func testEnvironment(trash: URL, prompts: ScriptedPrompts? = nil, opener: RecordingOpener? = nil) -> AppEnvironment {
+    let prompts = prompts ?? ScriptedPrompts()
+    let opener = opener ?? RecordingOpener()
+    let ops = OperationsCenter(ops: FileOperations(trash: FolderTrash(folder: trash)), prompts: prompts)
+    ops.runTransfersSynchronously = true
+    let env = AppEnvironment.ephemeral(opener: opener, operations: ops)
+    env.pasteboard = NSPasteboard(name: NSPasteboard.Name("fman.tests.\(UUID().uuidString)"))
+    return env
+}
+
 @MainActor
 func makeWindow(_ dirs: [URL], modes: [ViewMode] = [.list, .list], env: AppEnvironment? = nil) -> MainWindowController {
-    let env = env ?? AppEnvironment.ephemeral(opener: RecordingOpener())
+    let env = env ?? testEnvironment(trash: FileManager.default.temporaryDirectory.appendingPathComponent("fman-trash-\(UUID().uuidString)"))
     let wc = MainWindowController(env: env, directories: dirs, viewModes: modes, autosave: false)
     wc.window!.layoutIfNeeded()
     wc.paneGroup.activePane.focus()

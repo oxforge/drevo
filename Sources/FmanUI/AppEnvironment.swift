@@ -26,19 +26,24 @@ final class AppEnvironment {
 
     let preferences: Preferences
     let opener: FileOpening
+    let operations: OperationsCenter
+    /// The general pasteboard; tests use a private one.
+    var pasteboard: NSPasteboard = .general
     private let overridesURL: URL?
     private(set) var keyMap: KeyMap
     private(set) var keyMapProblems: [String] = []
 
-    init(preferences: Preferences, opener: FileOpening? = nil, overridesURL: URL? = KeyMap.userOverridesURL) {
+    init(preferences: Preferences, opener: FileOpening? = nil, overridesURL: URL? = KeyMap.userOverridesURL,
+         operations: OperationsCenter? = nil) {
         self.preferences = preferences
         self.opener = opener ?? WorkspaceOpener()
+        self.operations = operations ?? OperationsCenter(prompts: SheetPrompts())
         self.overridesURL = overridesURL
         (keyMap, keyMapProblems) = KeyMap.load(preferences: preferences, overridesURL: overridesURL)
     }
 
-    static func ephemeral(opener: FileOpening? = nil) -> AppEnvironment {
-        AppEnvironment(preferences: .ephemeral(), opener: opener, overridesURL: nil)
+    static func ephemeral(opener: FileOpening? = nil, operations: OperationsCenter? = nil) -> AppEnvironment {
+        AppEnvironment(preferences: .ephemeral(), opener: opener, overridesURL: nil, operations: operations)
     }
 
     func reloadKeyMap() {

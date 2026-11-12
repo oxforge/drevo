@@ -51,7 +51,7 @@ import Testing
 
     @Test func returnOpensFolderAndFiles() {
         let opener = RecordingOpener()
-        let wc = makeWindow([fx.url, fx.url], env: .ephemeral(opener: opener))
+        let wc = makeWindow([fx.url, fx.url], env: testEnvironment(trash: fx.url.appendingPathComponent(".T"), opener: opener))
         let w = wc.window!
         let pane = wc.paneGroup.activePane
         pane.browser.select([fx.url.appendingPathComponent("beta")])

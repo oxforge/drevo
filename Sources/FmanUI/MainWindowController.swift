@@ -114,11 +114,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
             self.paneGroup.activePane.navigate(to: url)
             self.paneGroup.activePane.focus()
         }
+        observers.append(NotificationCenter.default.addObserver(forName: OperationsCenter.filesDidChange, object: env.operations, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.paneGroup.panes.forEach { $0.reload() } }
+        })
         observers.append(NotificationCenter.default.addObserver(forName: Preferences.didChange, object: env.preferences, queue: .main) { [weak self] note in
             let key = note.userInfo?[Preferences.changedKey] as? String
             MainActor.assumeIsolated { self?.preferencesChanged(key: key) }
         })
         _ = workspace.view
+        workspace.addBottomBar(OperationsBar(operations: env.operations))
         refreshWindowChrome()
     }
 
@@ -137,6 +141,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
     /// Remembers panes for the next launch (the most recently changed window wins).
     func saveState() {
         env.preferences.savedWindowState = paneGroup.state.encoded()
+    }
+
+    func windowWillReturnUndoManager(_ window: NSWindow) -> UndoManager? {
+        env.operations.undoManager
     }
 
     // MARK: Commands
@@ -182,6 +190,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
         case .open: return !pane.selectedItems.isEmpty
         case .nextPane, .previousPane, .swapPanes, .openInOtherPane, .removePane: return paneGroup.panes.count > 1
         case .addPane: return paneGroup.panes.count < 4
+        case .copyToOtherPane, .moveToOtherPane: return !pane.selectedItems.isEmpty
+        case .rename, .newFolder, .newFile, .moveToTrash, .deleteImmediately, .duplicate, .makeAlias, .copyPath, .pasteMove:
+            return pane.canPerformFileCommand(id)
         case .enclosingFolder, .levelUp, .levelDown, .goHome, .goDesktop, .goDocuments, .goDownloads,
              .goApplications, .goUtilities, .goVolumes, .listView, .columnsView, .toggleHidden,
              .toggleStatusBar, .toggleKeyHints, .toggleCommandLine, .toggleSidebar, .biggerRows,

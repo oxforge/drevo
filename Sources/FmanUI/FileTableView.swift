@@ -52,8 +52,15 @@ final class FileTableView: NSTableView {
 /// responder, which is how the inactive pane reads as inactive.
 final class FileRowView: NSTableRowView {}
 
+/// A cell whose name can be edited in place.
+@MainActor
+protocol NameEditingCell: NSView {
+    var nameLabel: NSTextField { get }
+}
+
 /// Cell for the Name column: icon + name.
-final class NameCellView: NSTableCellView {
+final class NameCellView: NSTableCellView, NameEditingCell {
+    var nameLabel: NSTextField { label }
     let icon = NSImageView()
     let label = NSTextField(labelWithString: "")
 
