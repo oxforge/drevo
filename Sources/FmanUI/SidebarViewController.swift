@@ -3,7 +3,7 @@ import FmanCore
 
 /// Source-list sidebar: Favorites and Locations (mounted volumes).
 @MainActor
-final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate {
+final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate {
     final class Section: NSObject {
         let title: String
         var items: [Entry]
@@ -48,6 +48,11 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
         outline.delegate = self
         outline.target = self
         outline.action = #selector(clicked(_:))
+        outline.registerForDraggedTypes([.fileURL])
+        outline.setDraggingSourceOperationMask([.copy, .move, .link, .generic], forLocal: false)
+        let menu = NSMenu()
+        menu.delegate = self
+        outline.menu = menu
 
         let scroll = NSScrollView()
         scroll.documentView = outline
@@ -117,7 +122,8 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
     /// Adds a folder to Favorites (Add to Sidebar, ⌃⌘T).
     func addFavorite(_ url: URL) {
         var paths = env.preferences.favoritePaths ?? Self.defaultFavorites().map(\.path)
-        guard !paths.contains(url.path) else { return }
+        let key = DirectoryWatcher.normalize(url.path)
+        guard !paths.contains(where: { DirectoryWatcher.normalize($0) == key }) else { return }
         paths.append(url.path)
         env.preferences.favoritePaths = paths
         reloadSections()
@@ -125,9 +131,81 @@ final class SidebarViewController: NSViewController, NSOutlineViewDataSource, NS
 
     func removeFavorite(_ url: URL) {
         var paths = env.preferences.favoritePaths ?? Self.defaultFavorites().map(\.path)
-        paths.removeAll { $0 == url.path }
+        let key = DirectoryWatcher.normalize(url.path)
+        paths.removeAll { DirectoryWatcher.normalize($0) == key }
         env.preferences.favoritePaths = paths
         reloadSections()
+    }
+
+    // MARK: Drops
+
+    /// Drop onto an entry copies/moves into it; dropping folders between favorites adds them.
+    func outlineView(_ outlineView: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {
+        let urls = FileDragDrop.fileURLs(info)
+        guard !urls.isEmpty else { return [] }
+        if let entry = item as? Entry, index == NSOutlineViewDropOnItemIndex {
+            if urls.contains(where: { entry.url.isInside($0) }) { return [] }
+            return FileDragDrop.kind(info, sources: urls, destination: entry.url) == .copy ? .copy : .move
+        }
+        if let section = item as? Section, section === sections.first, index != NSOutlineViewDropOnItemIndex,
+           urls.allSatisfy(\.isDirectoryOnDisk) {
+            return .link
+        }
+        return []
+    }
+
+    func outlineView(_ outlineView: NSOutlineView, acceptDrop info: NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
+        let urls = FileDragDrop.fileURLs(info)
+        if let entry = item as? Entry {
+            let kind = FileDragDrop.kind(info, sources: urls, destination: entry.url)
+            env.operations.transfer(kind, urls, to: entry.url, window: view.window)
+            return true
+        }
+        if item is Section {
+            urls.forEach { addFavorite($0) }
+            return true
+        }
+        return false
+    }
+
+    // MARK: Context menu
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        guard let entry = outline.item(atRow: outline.clickedRow) as? Entry else { return }
+        let reveal = menu.addItem(withTitle: "Reveal in Finder", action: #selector(revealEntry(_:)), keyEquivalent: "")
+        reveal.representedObject = entry
+        reveal.target = self
+        if entry.isVolume {
+            if entry.url.path != "/" {
+                let eject = menu.addItem(withTitle: "Eject “\(entry.title)”", action: #selector(ejectEntry(_:)), keyEquivalent: "")
+                eject.representedObject = entry
+                eject.target = self
+            }
+        } else {
+            let remove = menu.addItem(withTitle: "Remove from Sidebar", action: #selector(removeEntry(_:)), keyEquivalent: "")
+            remove.representedObject = entry
+            remove.target = self
+        }
+    }
+
+    @objc private func revealEntry(_ sender: NSMenuItem) {
+        guard let entry = sender.representedObject as? Entry else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([entry.url])
+    }
+
+    @objc private func removeEntry(_ sender: NSMenuItem) {
+        guard let entry = sender.representedObject as? Entry else { return }
+        removeFavorite(entry.url)
+    }
+
+    @objc private func ejectEntry(_ sender: NSMenuItem) {
+        guard let entry = sender.representedObject as? Entry else { return }
+        do {
+            try NSWorkspace.shared.unmountAndEjectDevice(at: entry.url)
+        } catch {
+            env.operations.prompts.showError("Couldn’t eject “\(entry.title)”.", detail: error.localizedDescription, in: view.window)
+        }
     }
 
     @objc private func clicked(_ sender: Any?) {

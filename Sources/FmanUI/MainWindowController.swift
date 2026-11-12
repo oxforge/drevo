@@ -91,6 +91,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
     let shell: ShellSession
     private var sidebarItem: NSSplitViewItem!
     private var observers: [NSObjectProtocol] = []
+    private var watcher: DirectoryWatcher?
 
     init(env: AppEnvironment, directories: [URL], viewModes: [ViewMode] = [], autosave: Bool = true) {
         self.env = env
@@ -148,6 +149,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
                 self?.refreshQuickLook()
             }
             self?.saveState()
+            self?.updateWatchedFolders()
         }
         sidebar.onNavigate = { [weak self] url in
             guard let self else { return }
@@ -166,6 +168,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
         workspace.addBottomBar(commandBar)
         commandBar.isHidden = !env.preferences.showCommandLine
         wireShell()
+        startWatching()
         refreshWindowChrome()
     }
 
@@ -174,6 +177,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
 
     deinit {
         observers.forEach { NotificationCenter.default.removeObserver($0) }
+        watcher?.stop()
     }
 
     override func showWindow(_ sender: Any?) {
@@ -218,6 +222,25 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
             self?.paneGroup.activePane.focus()
         }
         shell.onFinish = { [weak self] in self?.env.operations.postChange() }
+    }
+
+    // MARK: Live updates
+
+    private func startWatching() {
+        watcher = DirectoryWatcher { [weak self] changed in
+            onMainRunLoop { self?.foldersChanged(changed) }
+        }
+        updateWatchedFolders()
+    }
+
+    func updateWatchedFolders() {
+        watcher?.watch(paneGroup.panes.flatMap(\.shownDirectories))
+    }
+
+    private func foldersChanged(_ changed: Set<String>) {
+        for pane in paneGroup.panes where pane.shownDirectories.contains(where: { changed.contains(DirectoryWatcher.normalize($0.path)) }) {
+            pane.reloadForExternalChange()
+        }
     }
 
     /// Folder for "Open in Terminal": the selected folder, else the current one.
@@ -289,7 +312,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
              .edit, .showPackageContents, .revealInFinder, .getInfo:
             return pane.canPerformFileCommand(id)
         case .quickLook: return !pane.selectedItems.isEmpty
-        case .openTerminal, .runCommand, .toggleConsole: return true
+        case .openTerminal, .runCommand, .toggleConsole, .goToPath, .filter: return true
         case .stopCommand: return shell.isRunning
         case .runInTerminal: return commandBar.hasFocus
         case .enclosingFolder, .levelUp, .levelDown, .goHome, .goDesktop, .goDocuments, .goDownloads,

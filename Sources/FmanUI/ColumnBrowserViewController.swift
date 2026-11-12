@@ -86,6 +86,7 @@ final class ColumnBrowserViewController: NSViewController, FileBrowser {
     var selectedItems: [FileItem] { columns.isEmpty ? [] : columns[focusedIndex].selectedItems }
     var visibleItems: [FileItem] { columns.isEmpty ? [] : columns[focusedIndex].items }
     var activeTableView: FileTableView? { columns.isEmpty ? nil : columns[focusedIndex].tableView }
+    var shownDirectories: [URL] { columns.map(\.directory) }
 
     var hasFocus: Bool {
         guard let fr = view.window?.firstResponder as? NSView else { return false }

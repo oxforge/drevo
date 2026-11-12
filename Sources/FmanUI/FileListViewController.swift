@@ -112,6 +112,7 @@ final class FileListViewController: NSViewController, FileBrowser, NSTableViewDa
 
     var hasFocus: Bool { view.window?.firstResponder === tableView }
     var activeTableView: FileTableView? { tableView }
+    var shownDirectories: [URL] { [currentDirectory] }
 
     func display(_ directory: URL, selecting: URL?) {
         currentDirectory = directory

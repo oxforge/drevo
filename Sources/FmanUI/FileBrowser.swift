@@ -51,6 +51,8 @@ protocol FileBrowser: AnyObject {
     func applyRowSize(_ size: RowSize)
     /// The table that hosts the current directory, for editing and drag & drop.
     var activeTableView: FileTableView? { get }
+    /// Every folder on screen (all columns), for live watching.
+    var shownDirectories: [URL] { get }
 }
 
 extension FileBrowser {

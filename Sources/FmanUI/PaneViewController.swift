@@ -23,6 +23,7 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
     private(set) var viewMode: ViewMode
     private(set) var sort = FileSort()
     private(set) var filter = ""
+    var shownDirectories: [URL] { browser.shownDirectories }
     private(set) var browser: FileBrowser!
 
     let header = PaneHeaderView()
@@ -72,6 +73,18 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
             self?.navigate(to: url, selecting: nil)
         }
         header.onClick = { [weak self] in self?.activate(focus: true) }
+        header.onPathCommit = { [weak self] text in self?.commitPath(text) }
+        header.onPathComplete = { [weak self] text in
+            guard let self else { return [] }
+            return PathCompletion.candidates(for: text, relativeTo: self.currentDirectory, showHidden: self.env.preferences.showHidden)
+        }
+        header.onEditingEnded = { [weak self] in self?.focus() }
+        header.onFilterChange = { [weak self] text in self?.setFilter(text) }
+        header.onFilterDone = { [weak self] clear in
+            guard let self else { return }
+            if clear { self.clearFilter() }
+            self.focus()
+        }
         statusBar.isHidden = !env.preferences.showStatusBar
         view = root
         embed(browser)
@@ -137,6 +150,7 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
 
     /// Show `url` and remember it in history. Files are revealed: their folder opens with them selected.
     func navigate(to url: URL, selecting: URL? = nil) {
+        if !filter.isEmpty || header.isFiltering { clearFilter(reload: false) }
         var target = url
         var select = selecting
         if let item = try? FileItem(url: url), !item.isContainer {
@@ -160,6 +174,55 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
     func reload() {
         browser.reload(options: env.preferences.listingOptions(sort: sort, filter: filter))
         refreshChrome()
+    }
+
+    // MARK: Path editing and filter
+
+    /// ⌘L / ⇧⌘G, or typing "/" or "~" in the file list.
+    func beginPathEditing(prefill: String? = nil) {
+        activate(focus: false)
+        if let prefill {
+            header.beginPathEditing(prefill, selectAll: false)
+        } else {
+            header.beginPathEditing(Formatting.abbreviatedPath(currentDirectory) + "/", selectAll: true)
+        }
+    }
+
+    private func commitPath(_ text: String) {
+        let path = PathCompletion.expand(text, relativeTo: currentDirectory)
+        let url = URL(fileURLWithPath: path)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            NSSound.beep()
+            header.pathField.currentEditor()?.selectAll(nil)
+            return
+        }
+        header.endPathEditing()
+        navigate(to: url)
+        focus()
+    }
+
+    func beginFilter() {
+        activate(focus: false)
+        header.beginFilter()
+    }
+
+    func setFilter(_ text: String) {
+        filter = text
+        reload()
+        if let first = browser.visibleItems.first, browser.selectedItems.isEmpty { browser.select([first.url]) }
+    }
+
+    func clearFilter(reload doReload: Bool = true) {
+        header.clearFilter()
+        guard !filter.isEmpty else { return }
+        filter = ""
+        if doReload { reload() }
+    }
+
+    /// FSEvents saw a change in one of this pane's folders.
+    func reloadForExternalChange() {
+        guard !InlineRenamer.isEditing else { return }
+        reload()
     }
 
     func focus() { browser.focus() }
@@ -230,6 +293,8 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
         case .goVolumes: navigate(to: URL(fileURLWithPath: "/Volumes"))
         case .listView: setViewMode(.list)
         case .columnsView: setViewMode(.columns)
+        case .goToPath: beginPathEditing()
+        case .filter: beginFilter()
         default: return performFileCommand(id)
         }
         return true
@@ -250,7 +315,12 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
     func refreshChrome() {
         guard isViewLoaded else { return }
         header.pathBar.show(currentDirectory)
+        updateStatus()
+    }
+
+    private func updateStatus() {
         statusBar.update(items: browser.visibleItems, selected: browser.selectedItems, directory: currentDirectory)
+        if !filter.isEmpty { statusBar.left.stringValue = "Filter “\(filter)”: " + statusBar.left.stringValue }
     }
 
     // MARK: FileBrowserDelegate
@@ -262,7 +332,7 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
     }
 
     func browserSelectionDidChange(_ browser: FileBrowser) {
-        statusBar.update(items: browser.visibleItems, selected: browser.selectedItems, directory: currentDirectory)
+        updateStatus()
         onChange?(self)
     }
 
@@ -271,6 +341,15 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
     }
 
     func browser(_ browser: FileBrowser, handleKey event: NSEvent) -> Bool {
+        let mods = event.modifierFlags.intersection([.command, .control, .option])
+        if mods.isEmpty, let c = event.characters, c == "/" || c == "~" {
+            beginPathEditing(prefill: c == "~" ? "~/" : "/")
+            return true
+        }
+        if event.keyCode == 53, !filter.isEmpty { // Esc clears an active filter
+            clearFilter()
+            return true
+        }
         guard let id = env.keyMap.command(for: event) else { return false }
         // Arrow keys fall through to the table when the command has nothing to do.
         if id == .levelDown { return perform(.levelDown) }
