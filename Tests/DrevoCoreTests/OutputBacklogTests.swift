@@ -76,18 +76,73 @@ import Testing
         #expect(text == "😀😀")
     }
 
-    @Test func escapeSequencesAreStrippedPerStream() {
+    @Test func escapeSequencesAreReadPerStream() {
         let b = OutputBacklog(limit: 1000)
         b.append("hello \u{1B}[3", isError: false)
         b.append("warn\u{1B}", isError: true)
         b.append("1mred\u{1B}[0m", isError: false)
-        b.append("[1ming", isError: true)
+        b.append("[1ming\u{1B}[2K", isError: true)
         #expect(b.take().runs == [
             .init(text: "hello ", isError: false),
             .init(text: "warn", isError: true),
-            .init(text: "red", isError: false),
-            .init(text: "ing", isError: true),
+            .init(text: "red", isError: false, style: TextStyle(foreground: .palette(1))),
+            .init(text: "ing", isError: true, style: TextStyle(bold: true)),
         ])
+    }
+
+    @Test func styleLastsAcrossChunksAndTakesAndBelongsToItsStream() {
+        let b = OutputBacklog(limit: 1000)
+        let green = TextStyle(foreground: .palette(2))
+        b.append("\u{1B}[32mgreen ", isError: false)
+        b.append("still green", isError: false)
+        b.append("not green", isError: true)
+        #expect(b.take().runs == [
+            .init(text: "green still green", isError: false, style: green),
+            .init(text: "not green", isError: true),
+        ])
+        b.append("after a take\u{1B}[0m plain", isError: false)
+        #expect(b.take().runs == [
+            .init(text: "after a take", isError: false, style: green),
+            .init(text: " plain", isError: false),
+        ])
+    }
+
+    @Test func theTailKeptPastTheLimitKeepsItsStyles() {
+        let b = OutputBacklog(limit: 100)
+        let red = TextStyle(foreground: .palette(1))
+        b.append("\u{1B}[31m", isError: false)
+        for i in 0..<1000 { b.append("line \(i)\n", isError: false) }
+        b.append("\u{1B}[1mbold\n", isError: false)
+        let batch = b.take()
+        #expect(batch.skipped)
+        #expect(batch.runs.count == 2)
+        #expect(batch.runs.first?.style == red, "set long before the text that was dropped")
+        #expect(batch.runs.first?.text.hasSuffix("line 999\n") == true)
+        #expect(batch.runs.last == .init(text: "bold\n", isError: false, style: TextStyle(foreground: .palette(1), bold: true)))
+        #expect(batch.runs.map(\.text).joined().utf16.count <= 100)
+    }
+
+    /// Every line in several colours: many short runs instead of one long one. The limit
+    /// and the speed hold all the same.
+    @Test func aColouredFloodStaysBoundedAndQuick() {
+        let b = OutputBacklog(limit: 400_000)
+        let line = "\u{1B}[1;32mok\u{1B}[0m the quick \u{1B}[38;5;208mbrown\u{1B}[0m fox\n"
+        let chunk = String(repeating: line, count: 16_384 / line.utf8.count)
+        let start = Date()
+        var most = 0
+        for _ in 0..<(10_000_000 / chunk.utf8.count) {
+            b.append(chunk, isError: false)
+            most = max(most, b.pendingLength)
+        }
+        #expect(Date().timeIntervalSince(start) < 10, "took \(Date().timeIntervalSince(start)) s")
+        #expect(most <= 2 * 400_000 + 16_384)
+        let batch = b.take()
+        #expect(batch.skipped)
+        let text = batch.runs.map(\.text).joined()
+        #expect(text.utf16.count <= 400_000 && text.utf16.count > 399_000)
+        #expect(text.hasPrefix("ok the quick brown fox\n") && text.hasSuffix("ok the quick brown fox\n"))
+        #expect(batch.runs.last == .init(text: " fox\n", isError: false))
+        #expect(batch.runs.dropLast().last == .init(text: "brown", isError: false, style: TextStyle(foreground: .rgb(255, 135, 0))))
     }
 
     /// 50 MB from a real command with nothing taking it: the reader keeps up (a per-chunk
