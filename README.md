@@ -72,7 +72,7 @@ make run
 | `make run` | `make app`, then opens it |
 | `make test` | Unit and UI-controller tests (swift-testing) |
 | `make snapshot` | Renders the window to `build/snapshots/{light,dark}.png` (add `SNAP_ARGS="--open ~/some/folder"`) |
-| `make dmg` | `make app`, then puts it in `build/Drevo-<version>.dmg` with an Applications shortcut (`VERSION=0.2.0` sets the version) |
+| `make dmg` | `make app`, then puts it in `build/Drevo-<version>.dmg` with an Applications shortcut (`VERSION=0.3.0` sets the version; the default is the current release) |
 | `make ci-signing-secret` | One-time: stores the "Drevo Local Signing" identity as GitHub secrets, so releases are signed with it too |
 | `make clean` | Removes `.build` and `build` |
 
@@ -119,12 +119,14 @@ Xcode 27 toolchain):
   still going.
 - **Release** (`.github/workflows/release.yml`): pushing a version tag tests and builds
   that version, signs it, and publishes a GitHub release with `Drevo-<version>.dmg`
-  attached and notes generated from the commits. The tag sets the app's version; a tag
-  with a suffix (`v0.3.0-beta1`) makes a pre-release. If the build fails, no release
-  is made.
+  attached. Its notes are `docs/release-notes/<version>.md`, or generated from the
+  commits when that file is missing. The tag sets the app's version; a tag with a suffix
+  (`v0.3.0-beta1`) makes a pre-release. If the build fails, no release is made. Before
+  tagging, set `VERSION` in the Makefile (the version of local builds) and write the
+  notes.
 
 ```bash
-git tag v0.2.0 && git push origin v0.2.0
+git tag v0.3.0 && git push origin v0.3.0
 ```
 
 **Signing releases, once.** With the GitHub CLI logged in (`gh auth login`) and the repo

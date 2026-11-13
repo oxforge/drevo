@@ -2,8 +2,8 @@
 
 APP_NAME    := Drevo
 BUNDLE_ID   := tech.oxforge.drevo
-# Release builds pass the tag's version: make dmg VERSION=0.2.0
-VERSION     := 0.1.0
+# Release builds pass the tag's version: make dmg VERSION=0.3.0
+VERSION     := 0.3.0
 BUILD_NUM   := $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
 CONFIG      ?= release
 # Signing identity. A stable one keeps macOS privacy permissions across rebuilds:

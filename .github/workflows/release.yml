@@ -1,5 +1,6 @@
-# Pushing a version tag (git tag v0.2.0 && git push origin v0.2.0) tests and builds that
-# version, signs it, and publishes a GitHub release with Drevo-0.2.0.dmg attached.
+# Pushing a version tag (git tag v0.3.0 && git push origin v0.3.0) tests and builds that
+# version, signs it, and publishes a GitHub release with Drevo-0.3.0.dmg attached and
+# docs/release-notes/0.3.0.md as its notes (generated from the commits if missing).
 # A tag with a suffix (v0.3.0-beta1) makes a pre-release. A failed build makes no release.
 name: Release
 
@@ -106,7 +107,14 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           PRERELEASE: ${{ steps.version.outputs.prerelease }}
         run: |
-          flags=(--title "Drevo $VERSION" --generate-notes --verify-tag)
+          # Written notes for this version (a pre-release uses its own file, e.g.
+          # 0.3.0-beta1.md), else notes generated from the commits.
+          notes="docs/release-notes/$VERSION.md"
+          if [ -f "$notes" ]; then
+            flags=(--title "Drevo $VERSION" --notes-file "$notes" --verify-tag)
+          else
+            flags=(--title "Drevo $VERSION" --generate-notes --verify-tag)
+          fi
           if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); fi
           gh release create "$GITHUB_REF_NAME" "build/Drevo-$VERSION.dmg" "${flags[@]}"
 
