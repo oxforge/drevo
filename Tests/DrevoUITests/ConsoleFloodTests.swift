@@ -64,17 +64,30 @@ final class Heartbeat {
 
     // MARK: Fast output
 
-    // Before the fix this command held the main thread for 8 s without a timer firing once.
-    // Now it is over in a fraction of a second (a couple of console updates), so there is
-    // no rate to measure here; the endless command below measures one. Other suites share
-    // the main thread through nested run loops, hence the slack in the limits.
-    @Test func fastOutputLeavesTheMainRunLoopResponsive() {
-        let wc = window()
-        run("yes '\(line)' | head -c 50000000", in: wc)
+    /// Runs `command` to its end and returns the longest the main run loop went without
+    /// firing a 50 Hz timer meanwhile.
+    func longestGap(running command: String, in wc: MainWindowController) -> TimeInterval {
+        run(command, in: wc)
         let heartbeat = Heartbeat(every: 0.02)
         #expect(waitFor(60) { !wc.shell.isRunning })
-        let longestGap = heartbeat.stop()
-        #expect(longestGap < 1, "the main run loop was never held for long (longest gap \(longestGap) s)")
+        return heartbeat.stop()
+    }
+
+    // Before the fix this command held the main thread for 8 s without a timer firing once.
+    // Now it is over in a fraction of a second (a couple of console updates), so there is
+    // no rate to measure here; the endless command below measures one.
+    // The longest gap also holds work every command causes, whatever it prints: the
+    // console opening (the window lays out again) and, at the end, the panes reloading and
+    // everything redrawing. That is ~0.1 s on a fast Mac (the output itself costs a few
+    // ms), and most likely what the CI runner measured as a 1.4 s gap; so the console is
+    // opened first and a command that prints nothing gives the baseline. Other suites share the main thread through nested run loops, hence the
+    // slack in the limits.
+    @Test func fastOutputLeavesTheMainRunLoopResponsive() {
+        let wc = window()
+        _ = longestGap(running: "true", in: wc) // opens the console
+        let quiet = longestGap(running: "true", in: wc)
+        let flood = longestGap(running: "yes '\(line)' | head -c 50000000", in: wc)
+        #expect(flood < quiet + 1, "the output adds no long hold of the main run loop (longest gap \(flood) s, \(quiet) s for a command without output)")
 
         let transcript = wc.workspace.console.transcript
         let length = (transcript as NSString).length
