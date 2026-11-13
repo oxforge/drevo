@@ -72,7 +72,7 @@ make run
 | `make run` | `make app`, then opens it |
 | `make test` | Unit and UI-controller tests (swift-testing) |
 | `make snapshot` | Renders the window to `build/snapshots/{light,dark}.png` (add `SNAP_ARGS="--open ~/some/folder"`) |
-| `make dmg` | `make app`, then puts it in `build/Drevo-<version>.dmg` with an Applications shortcut (`VERSION=0.3.0` sets the version; the default is the current release) |
+| `make dmg` | `make app`, then puts it in `build/Drevo-<version>.dmg` with an Applications shortcut (`VERSION=0.3.1` sets the version; the default is the current release) |
 | `make ci-signing-secret` | One-time: stores the "Drevo Local Signing" identity as GitHub secrets, so releases are signed with it too |
 | `make clean` | Removes `.build` and `build` |
 
@@ -126,7 +126,7 @@ Xcode 27 toolchain):
   notes.
 
 ```bash
-git tag v0.3.0 && git push origin v0.3.0
+git tag v0.3.1 && git push origin v0.3.1
 ```
 
 **Signing releases, once.** With the GitHub CLI logged in (`gh auth login`) and the repo
