@@ -224,7 +224,7 @@ private struct ShellTab: View {
     var body: some View {
         let editors = EditorChoices.installed(chosen: model.prefs.editorAppPath).map(\.path)
         Form {
-            Picker("Terminal app (⌥⌘T, ⌘↩)", selection: Binding(
+            Picker("Terminal app (⌥⌘T)", selection: Binding(
                 get: { model.prefs.terminalAppPath ?? TerminalLauncher.defaultTerminal.path },
                 set: { model.prefs.terminalAppPath = $0 })) {
                 ForEach(terminals, id: \.path) { Text(FileManager.default.displayName(atPath: $0.path)).tag($0.path) }

@@ -38,7 +38,7 @@ import Testing
     @Test func runsInActiveFolderAndRefreshesPanes() {
         let wc = window()
         wc.commandBar.field.stringValue = "pwd; touch made-by-shell.txt"
-        wc.commandBar.submit(inTerminal: false)
+        wc.commandBar.submit()
         #expect(wc.workspace.isConsoleVisible)
         #expect(waitFor { !wc.shell.isRunning && wc.workspace.console.transcript.contains("exit 0") })
         #expect(wc.workspace.console.transcript.contains(fx.url.lastPathComponent))
@@ -52,7 +52,7 @@ import Testing
     @Test func runsUntilTheConsoleShowsTheEnd() throws {
         let wc = window()
         wc.commandBar.field.stringValue = "echo end-marker"
-        wc.commandBar.submit(inTerminal: false)
+        wc.commandBar.submit()
         let command = try #require(wc.shell.running)
         #expect(command.waitUntilExit(timeout: 5), "the shell has exited; the main thread hasn't caught up")
         #expect(wc.shell.isRunning)
@@ -111,64 +111,6 @@ import Testing
         wc.perform(.openTerminal)
         #expect(opener.opened.last?.map(\.lastPathComponent) == ["Sub"])
     }
-
-    @Test func runInTerminalWritesSelfDeletingScript() throws {
-        let wc = window()
-        wc.commandBar.field.stringValue = "echo 'hi'"
-        wc.commandBar.submit(inTerminal: true)
-        let script = try #require(opener.opened.last?.first)
-        #expect(script.isInside(fx.url), "the test environment's scratch folder, never the user's Caches")
-        #expect(script.pathExtension == "command")
-        let text = try String(contentsOf: script, encoding: .utf8)
-        #expect(text.contains("cd '\(fx.url.path)'"))
-        #expect(text.contains("rm -f \"$0\""))
-        #expect(text.contains("echo '\\''hi'\\''"))
-        let perms = try FileManager.default.attributesOfItem(atPath: script.path)[.posixPermissions] as? NSNumber
-        #expect(perms?.intValue == 0o700)
-    }
-
-    /// A text field gets `noop:` for ⌘↩, never `insertNewline:`, so the field can't see
-    /// it: the menu item has to carry the key, and runs only from the command line.
-    @Test func cmdReturnRunsTheCommandLineInTerminal() throws {
-        let wc = window()
-        let menu = MainMenu.build(keyMap: wc.env.keyMap)
-        func items(_ menu: NSMenu) -> [NSMenuItem] { menu.items.flatMap { [$0] + ($0.submenu.map(items) ?? []) } }
-        let item = try #require(items(menu).first { $0.representedObject as? String == CommandID.runInTerminal.rawValue })
-        #expect(item.keyEquivalent == "\r" && item.keyEquivalentModifierMask == [.command])
-
-        #expect(!wc.validateMenuItem(item), "off outside the command line, so ⌘↩ in the file list does nothing")
-        wc.commandBar.field.stringValue = "echo hi"
-        wc.commandBar.focus()
-        #expect(wc.validateMenuItem(item))
-        wc.performCommand(item)
-        let script = try #require(opener.opened.last?.first)
-        #expect(script.pathExtension == "command")
-        #expect(try String(contentsOf: script, encoding: .utf8).contains("echo hi"))
-        #expect(wc.commandBar.field.stringValue.isEmpty)
-    }
-
-    @Test func scriptRunsCommandThenStaysInteractive() throws {
-        // Run the generated script with sh, with the "interactive shell" swapped for `exit 0`
-        // so it exits: proves quoting survives a real shell. Each swap must find its text:
-        // a missed one would run `zsh -l -i`, which reads the user's rc files.
-        var text = TerminalLauncher.scriptText(command: "echo \"$((1+2))\" 'x y' > out.txt", folder: fx.url, shell: "/bin/zsh")
-        for (pattern, replacement) in [
-            ("rm -f \"$0\"\n", ""),
-            ("exec '/bin/zsh' -l -i -c", "exec /bin/zsh -f -c"),
-            ("exec '\\''/bin/zsh'\\'' -l -i", "exit 0"),
-        ] {
-            try #require(text.contains(pattern), "the script format changed: no \(pattern)")
-            text = text.replacingOccurrences(of: pattern, with: replacement)
-        }
-        let script = fx.url.appendingPathComponent("t.sh")
-        try text.write(to: script, atomically: true, encoding: .utf8)
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/bin/sh")
-        p.arguments = [script.path]
-        try p.run()
-        p.waitUntilExit()
-        #expect(try String(contentsOf: fx.url.appendingPathComponent("out.txt"), encoding: .utf8) == "3 x y\n")
-    }
 }
 
 /// The real command path: the shell setup is loaded once and reused.
@@ -188,7 +130,7 @@ import Testing
 
     func runAndWait(_ wc: MainWindowController, _ command: String) -> Bool {
         wc.commandBar.field.stringValue = command
-        wc.commandBar.submit(inTerminal: false)
+        wc.commandBar.submit()
         return waitFor { !wc.shell.isRunning }
     }
 

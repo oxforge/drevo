@@ -143,17 +143,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
                 self.workspace.console.append("A command is still running — ⌘. stops it.\n", isError: true)
             }
         }
-        commandBar.onRunInTerminal = { [weak self] command in
-            guard let self else { return }
-            let dir = self.paneGroup.activePane.currentDirectory
-            if command.isEmpty {
-                TerminalLauncher.open(dir, env: self.env)
-            } else {
-                do { try TerminalLauncher.run(command, in: dir, env: self.env) } catch {
-                    self.env.operations.prompts.showError("Couldn’t open the terminal.", detail: error.localizedDescription, in: self.window)
-                }
-            }
-        }
+        commandBar.onOpenTerminal = { [weak self] in self?.perform(.openTerminal) }
         commandBar.onEscape = { [weak self] in self?.paneGroup.activePane.focus() }
         commandBar.onFocus = { [weak self] in self?.shell.prepare() }
         commandBar.onToggleConsole = { [weak self] in self?.perform(.toggleConsole) }
@@ -240,7 +230,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
         case .runCommand:
             if !env.preferences.showCommandLine { prefs.showCommandLine = true }
             commandBar.focus()
-        case .runInTerminal: commandBar.submit(inTerminal: true)
         case .toggleConsole:
             workspace.setConsoleVisible(!workspace.isConsoleVisible)
             if !workspace.isConsoleVisible { paneGroup.activePane.focus() }
@@ -278,7 +267,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
         case .openTerminal, .runCommand, .toggleConsole, .goToPath, .filter, .search, .commandPalette: return true
         case .sortByName, .sortByKind, .sortByModified, .sortByCreated, .sortBySize, .reverseSort: return true
         case .stopCommand: return shell.isRunning
-        case .runInTerminal: return commandBar.hasFocus
         case .enclosingFolder, .levelUp, .levelDown, .goHome, .goDesktop, .goDocuments, .goDownloads,
              .goApplications, .goUtilities, .goVolumes, .listView, .columnsView, .toggleHidden,
              .toggleStatusBar, .toggleKeyHints, .toggleCommandLine, .toggleSidebar, .biggerRows,

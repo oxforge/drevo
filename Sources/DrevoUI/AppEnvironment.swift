@@ -35,8 +35,6 @@ final class AppEnvironment {
     var spotlight: FileSearch.SpotlightSource? = Spotlight.find
     /// Tests search inline so results are there right after the call.
     var runSearchesSynchronously = false
-    /// Where Run in Terminal writes its scripts; tests use a scratch folder.
-    var terminalScriptsFolder: URL = TerminalLauncher.scriptsFolder
     /// keybindings.json; nil keeps the shortcut editor's changes in memory (tests,
     /// --ephemeral-settings).
     private let overridesURL: URL?

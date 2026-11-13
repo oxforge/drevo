@@ -30,7 +30,7 @@ import Testing
     func run(_ command: String, in wc: MainWindowController) -> pid_t {
         wc.shell.shellOverride = ("/bin/zsh", ["-f"]) // never run the user's rc files in tests
         wc.commandBar.field.stringValue = command
-        wc.commandBar.submit(inTerminal: false)
+        wc.commandBar.submit()
         #expect(waitFor { wc.shell.isRunning && wc.workspace.console.transcript.contains("\nready\n") })
         return wc.shell.running?.processID ?? 0
     }

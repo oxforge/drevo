@@ -112,8 +112,6 @@ func testEnvironment(trash: URL, prompts: ScriptedPrompts? = nil, opener: Record
     env.spotlight = nil
     env.runSearchesSynchronously = true
     env.pasteboard = NSPasteboard(name: NSPasteboard.Name("drevo.tests.\(UUID().uuidString)"))
-    // Run in Terminal's scripts, created on first use; never the user's Caches folder.
-    env.terminalScriptsFolder = trash.deletingLastPathComponent().appendingPathComponent("commands-\(UUID().uuidString)")
     return env
 }
 

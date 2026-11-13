@@ -2,7 +2,7 @@ import AppKit
 import DrevoCore
 
 /// The mc-style command line under the panes: runs in the active pane's folder.
-/// Return runs here, ⌘Return in the terminal app, ⌥Return inserts selected names,
+/// Return runs it in the console, ⌥Return inserts selected names,
 /// ↑/↓ walk history, Tab completes a file name, Esc goes back to the pane.
 @MainActor
 final class CommandBar: NSView, NSTextFieldDelegate {
@@ -11,7 +11,7 @@ final class CommandBar: NSView, NSTextFieldDelegate {
     var onFocus: (() -> Void)?
     private let prompt = NSTextField(labelWithString: "")
     var onRun: ((String) -> Void)?
-    var onRunInTerminal: ((String) -> Void)?
+    var onOpenTerminal: (() -> Void)?
     var onEscape: (() -> Void)?
     var onToggleConsole: (() -> Void)?
     /// Names (or paths) of the selected items to insert.
@@ -35,13 +35,13 @@ final class CommandBar: NSView, NSTextFieldDelegate {
         field.drawsBackground = false
         field.focusRingType = .none
         field.placeholderAttributedString = NSAttributedString(
-            string: "Shell command in this folder   ↩ run · ⌘↩ in Terminal · ⌥↩ insert selection · ! focuses",
+            string: "Shell command in this folder   ↩ run · ⌥↩ insert selection · ! focuses",
             attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.placeholderTextColor])
         field.delegate = self
         field.onFocus = { [weak self] in self?.onFocus?() }
         field.cell?.isScrollable = true
         field.cell?.wraps = false
-        let terminal = ConsoleViewController.iconButton("terminal", "Run in Terminal (⌘↩)", self, #selector(runInTerminalClicked))
+        let terminal = ConsoleViewController.iconButton("terminal", "Open in Terminal (⌥⌘T)", self, #selector(terminalClicked))
         let console = ConsoleViewController.iconButton("rectangle.bottomthird.inset.filled", "Show Console (⌥⌘J)", self, #selector(consoleClicked))
         for v in [top, prompt, field, terminal, console] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
@@ -91,8 +91,7 @@ final class CommandBar: NSView, NSTextFieldDelegate {
         let flags = NSApp.currentEvent?.modifierFlags ?? []
         switch selector {
         case #selector(NSResponder.insertNewline(_:)):
-            // ⌘↩ never gets here (the field sees it as `noop:`): it's Run Command in Terminal's menu key.
-            submit(inTerminal: false)
+            submit()
             return true
         case #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)):
             insertSelection(fullPaths: flags.contains(.shift))
@@ -117,7 +116,7 @@ final class CommandBar: NSView, NSTextFieldDelegate {
         }
     }
 
-    func submit(inTerminal: Bool) {
+    func submit() {
         let command = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !command.isEmpty else { NSSound.beep(); return }
         var history = preferences.commandHistory
@@ -125,7 +124,7 @@ final class CommandBar: NSView, NSTextFieldDelegate {
         preferences.commandHistory = history
         historyIndex = nil
         field.stringValue = ""
-        if inTerminal { onRunInTerminal?(command) } else { onRun?(command) }
+        onRun?(command)
     }
 
     func insertSelection(fullPaths: Bool) {
@@ -187,13 +186,7 @@ final class CommandBar: NSView, NSTextFieldDelegate {
         field.currentEditor()?.selectedRange = NSRange(location: (field.stringValue as NSString).length, length: 0)
     }
 
-    @objc private func runInTerminalClicked() {
-        if field.stringValue.trimmingCharacters(in: .whitespaces).isEmpty {
-            onRunInTerminal?("")
-        } else {
-            submit(inTerminal: true)
-        }
-    }
+    @objc private func terminalClicked() { onOpenTerminal?() }
 
     @objc private func consoleClicked() { onToggleConsole?() }
 }

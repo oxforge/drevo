@@ -38,7 +38,7 @@ final class Heartbeat {
 func mainRunLoopGaps(running command: String, in wc: MainWindowController) -> (command: TimeInterval, quiet: TimeInterval) {
     func longestGap(_ command: String) -> TimeInterval {
         wc.commandBar.field.stringValue = command
-        wc.commandBar.submit(inTerminal: false)
+        wc.commandBar.submit()
         let heartbeat = Heartbeat(every: 0.02)
         let end = Date().addingTimeInterval(60)
         while wc.shell.isRunning, Date() < end { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
@@ -71,7 +71,7 @@ func mainRunLoopGaps(running command: String, in wc: MainWindowController) -> (c
 
     func run(_ command: String, in wc: MainWindowController) {
         wc.commandBar.field.stringValue = command
-        wc.commandBar.submit(inTerminal: false)
+        wc.commandBar.submit()
     }
 
     /// The console's text view, to see where it is scrolled.

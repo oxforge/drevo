@@ -67,7 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let path = options.snapshotPath {
             if let command = options.snapshotCommand {
                 wc.commandBar.field.stringValue = command
-                wc.commandBar.submit(inTerminal: false)
+                wc.commandBar.submit()
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + (options.snapshotCommand == nil ? 0.8 : 2.5)) {
                 do {

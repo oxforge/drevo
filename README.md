@@ -74,7 +74,7 @@ make run
 | `make run` | `make app`, then opens it |
 | `make test` | Unit and UI-controller tests (swift-testing) |
 | `make snapshot` | Renders the window to `build/snapshots/{light,dark}.png` (add `SNAP_ARGS="--open ~/some/folder"`) |
-| `make dmg` | `make app`, then puts it in `build/Drevo-<version>.dmg` with an Applications shortcut (`VERSION=0.4.0` sets the version; the default is the current release) |
+| `make dmg` | `make app`, then puts it in `build/Drevo-<version>.dmg` with an Applications shortcut (`VERSION=0.4.1` sets the version; the default is the current release) |
 | `make ci-signing-secret` | One-time: stores the "Drevo Local Signing" identity as GitHub secrets, so releases are signed with it too |
 | `make clean` | Removes `.build` and `build` |
 
@@ -135,7 +135,7 @@ Xcode 27 toolchain):
   notes.
 
 ```bash
-git tag v0.4.0 && git push origin v0.4.0
+git tag v0.4.1 && git push origin v0.4.1
 ```
 
 **Signing releases, once.** With the GitHub CLI logged in (`gh auth login`) and the repo
@@ -203,7 +203,7 @@ system-wide shortcut; a unit test checks the defaults against that list.
 | Sort by Name / Kind / Date Modified / Size (again reverses) | ⌃⌥⌘1 / ⌃⌥⌘2 / ⌃⌥⌘5 / ⌃⌥⌘6, or the sort button in the pane header |
 | Open in other pane, Swap panes | ⌥⌘O, ⌘U |
 | Home, Desktop, Documents, Downloads, Applications, Utilities | ⇧⌘H, ⇧⌘D, ⇧⌘O, ⌥⌘L, ⇧⌘A, ⇧⌘U |
-| Open in Terminal, Run the command line's command there | ⌥⌘T, ⌘↩ |
+| Open in Terminal | ⌥⌘T |
 | Run shell command / Stop it / Console | `!` or ⌥⌘R / ⌘. / ⌥⌘J |
 | Command palette | ⇧⌘P |
 
@@ -267,8 +267,6 @@ The bar under the panes runs commands in the active pane's folder:
   A command is finished when its shell exits, even if it left a process in the
   background (`server &`): the console doesn't wait for that process and doesn't show
   what it prints later, so send its output to a file.
-- **⌘Return** runs it in your terminal app instead, for interactive tools like vim, top
-  or ssh, and leaves a shell open there.
 - **⌥Return** inserts the selected names, shell-quoted (⇧⌥Return inserts full paths).
 - **Tab** completes the file or folder name before the cursor, from the active pane's
   folder (or the path typed so far, `~/` included). Several matches extend to their

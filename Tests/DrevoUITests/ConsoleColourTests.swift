@@ -22,7 +22,7 @@ import Testing
 
     func run(_ command: String, in wc: MainWindowController) {
         wc.commandBar.field.stringValue = command
-        wc.commandBar.submit(inTerminal: false)
+        wc.commandBar.submit()
     }
 
     /// The attributes of the transcript where `word` begins — where it is last seen: the

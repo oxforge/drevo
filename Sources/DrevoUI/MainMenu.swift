@@ -92,7 +92,7 @@ enum MainMenu {
         add(panes, [.equalizePanes], keyMap)
 
         let shell = submenu(main, "Shell")
-        add(shell, [.openTerminal, .runCommand, .runInTerminal], keyMap)
+        add(shell, [.openTerminal, .runCommand], keyMap)
         shell.addItem(.separator())
         add(shell, [.toggleConsole, .stopCommand], keyMap)
 
