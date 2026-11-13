@@ -6,7 +6,7 @@ import Testing
 /// Records when a repeating main-run-loop timer fires: the gaps show how long the main
 /// thread was unavailable to everything else (events, ⌘., redraws).
 @MainActor
-private final class Heartbeat {
+final class Heartbeat {
     private var timer: Timer?
     private(set) var beats: [Date] = [Date()]
 

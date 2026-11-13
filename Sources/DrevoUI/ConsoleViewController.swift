@@ -128,29 +128,38 @@ final class ConsoleViewController: NSViewController {
         .foregroundColor: NSColor.secondaryLabelColor,
     ]
 
-    private static func outputAttributes(isError: Bool) -> [NSAttributedString.Key: Any] {
-        [
-            .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular),
-            .foregroundColor: isError ? NSColor.systemRed : NSColor.labelColor,
-        ]
-    }
-
-    /// One message (a command's output arrives in batches instead).
+    /// One message of the app's own, in plain text (a command's output arrives in
+    /// batches instead, with its colours).
     func append(_ text: String, isError: Bool) {
-        appendAttributed(NSAttributedString(string: ANSI.strip(text), attributes: Self.outputAttributes(isError: isError)))
+        appendAttributed(NSAttributedString(string: ANSI.strip(text),
+                                            attributes: ConsoleTextAttributes.attributes(for: .plain, isError: isError)))
     }
 
     /// Everything a command printed since the last update, as one edit of the transcript.
     func append(_ batch: OutputBacklog.Batch) {
         guard !batch.isEmpty else { return }
-        let text = NSMutableAttributedString()
+        // The whole text first, then each run's attributes over its range: coloured
+        // output comes as thousands of short runs, too many to append one by one.
+        let string = NSMutableString()
+        var note = NSRange(location: 0, length: 0)
         if batch.skipped {
-            let lineBreak = endsWithLineBreak ? "" : "\n"
-            text.append(NSAttributedString(string: lineBreak + Self.skippedNote, attributes: Self.noteAttributes))
+            string.append((endsWithLineBreak ? "" : "\n") + Self.skippedNote)
+            note.length = string.length
         }
+        var ranges: [NSRange] = []
+        ranges.reserveCapacity(batch.runs.count)
         for run in batch.runs {
-            text.append(NSAttributedString(string: run.text, attributes: Self.outputAttributes(isError: run.isError)))
+            let start = string.length
+            string.append(run.text)
+            ranges.append(NSRange(location: start, length: string.length - start))
         }
+        let text = NSMutableAttributedString(string: string as String)
+        text.beginEditing()
+        if note.length > 0 { text.setAttributes(Self.noteAttributes, range: note) }
+        for (run, range) in zip(batch.runs, ranges) {
+            text.setAttributes(ConsoleTextAttributes.attributes(for: run.style, isError: run.isError), range: range)
+        }
+        text.endEditing()
         appendAttributed(text)
     }
 

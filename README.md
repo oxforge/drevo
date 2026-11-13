@@ -175,7 +175,12 @@ The bar under the panes runs commands in the active pane's folder:
   after an hour, or via Settings ▸ Shell ▸ Reload (zsh and bash; other shells load their
   config for every command). PATH, aliases and functions match Terminal.
   Output streams into the console (⌥⌘J), with stderr in red, then the exit status and
-  timing. The console keeps the latest 400,000 characters, and output that arrives
+  timing. Colours and styles a command prints are shown: the 16 named colours (tuned
+  for the light and the dark appearance), 256 and true colours, bold, dim, italic,
+  underline and inverse. A command writes to a pipe here, not to a terminal, so many
+  tools print colour only when asked to (`git -c color.ui=always log`,
+  `ls --color=always`, `CLICOLOR_FORCE=1 ls`).
+  The console keeps the latest 400,000 characters, and output that arrives
   faster than it can be shown is skipped, with an "… output skipped …" note.
   ⌘. stops the command: Ctrl-C to its whole process group, then a hard kill if it is
   still running two seconds later. Closing the window or quitting Drevo stops it too.
