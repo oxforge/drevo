@@ -66,6 +66,12 @@ final class ScriptedPrompts: UserPrompts {
         return conflictAnswer
     }
     func showError(_ message: String, detail: String?, in window: NSWindow?) { errors.append(message + " " + (detail ?? "")) }
+    var confirmAnswer = true
+    var confirmations: [String] = []
+    func confirm(_ message: String, detail: String?, button: String, in window: NSWindow?, then: @escaping (Bool) -> Void) {
+        confirmations.append(message)
+        then(confirmAnswer)
+    }
 }
 
 /// The environment a scratch zsh starts from: the few variables it needs, not a copy of

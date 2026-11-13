@@ -6,6 +6,13 @@ import DrevoCore
 enum MainMenu {
     nonisolated static let commandAction = #selector(MainWindowController.performCommand(_:))
 
+    /// Keys of the menu items `build` adds outside the registry, by title. The shortcut
+    /// editor refuses them; a test keeps this in step with the menu.
+    nonisolated static let fixedShortcuts: [KeyCombo: String] = [
+        "cmd+,": "Settings…", "cmd+h": "Hide Drevo", "opt+cmd+h": "Hide Others", "cmd+q": "Quit Drevo",
+        "shift+cmd+w": "Close Window", "ctrl+cmd+f": "Enter Full Screen", "cmd+m": "Minimize",
+    ].reduce(into: [:]) { $0[try! KeyCombo(parsing: $1.key)] = $1.value }
+
     static func build(keyMap: KeyMap) -> NSMenu {
         let main = NSMenu()
 
