@@ -8,11 +8,21 @@ line that runs in the current folder, and a Settings window for the rest.
 - **Two panes, two views.** Each pane shows Columns (Miller columns with a file preview)
   or List (Name/Date/Size/Kind). ⌘3 / ⌘2 switch the active pane. Each pane sorts by name,
   kind, date modified, date created or size (header button, View ▸ Sort By, or ⌃⌥⌘ +
-  number), and remembers it.
+  number), and remembers it. In Columns, drag a column's edge to resize it (⌥-drag
+  resizes them all and keeps the width). Double-click the divider between panes, or
+  Panes ▸ Make Panes Equal Width, to even them out.
+- **Tabs in each pane.** ⌘T opens another tab on the same folder, ⌃⇥ / ⌃⇧⇥ switch, ⌘W
+  closes the tab (the window, when it's the pane's last one; ⇧⌘W always closes the
+  window). Each tab keeps its folder, view, sort order and history, and tabs come back
+  at the next launch.
+- **Filter and search.** Start typing (or ⌘F) to filter the folder by name; `*` and `?`
+  are wildcards. ⌥⌘F searches the folder and everything inside it: type a name, press
+  Return, and the matches are listed with their locations. Every file command works on
+  the results, ⌘↑ shows a result in its own folder, Esc goes back.
 - **Copy between panes in one key.** F5 copies and F6 moves the selection to the other
   pane, or ⇧⌘C / ⇧⌘M on a laptop keyboard. Drag & drop works between panes and with other
   apps, using Finder's rules: the same volume moves, another volume copies, ⌥ forces a
-  copy, ⌘ forces a move.
+  copy, ⌘ forces a move. Dropping on a folder of the path bar puts the files there.
 - **Archives expand in place.** Opening a .zip or .tar(.gz/.bz2/.xz) expands it next to
   itself the way Finder does (one item lands beside the archive, several go into a folder
   named after it), without Archive Utility popping up a Finder window. Select several and
@@ -27,7 +37,8 @@ line that runs in the current folder, and a Settings window for the rest.
   palette that searches every command and shows its shortcut, and Help ▸ Keyboard
   Shortcuts lists them all.
 - **Configurable.** Hidden files (⇧⌘.), Return opens or renames, row size, which bars
-  show, terminal and editor apps, and remappable keys (`keybindings.json`).
+  show, terminal and editor apps, and remappable keys (`keybindings.json`). Settings ▸
+  General can record a global shortcut that brings Drevo to the front from any app.
 
 ## Requirements
 
@@ -46,7 +57,8 @@ make run
 
 | Command | What it does |
 | --- | --- |
-| `make app` | Release build, assembles and ad-hoc signs `build/Drevo.app` |
+| `make app` | Release build, assembles and signs `build/Drevo.app` (ad hoc, or with the local identity once it exists) |
+| `make signing-identity` | One-time: creates the "Drevo Local Signing" identity so rebuilds keep their privacy permissions |
 | `make run` | `make app`, then opens it |
 | `make test` | Unit and UI-controller tests (swift-testing) |
 | `make snapshot` | Renders the window to `build/snapshots/{light,dark}.png` (add `SNAP_ARGS="--open ~/some/folder"`) |
