@@ -5,9 +5,12 @@ BUNDLE_ID   := tech.oxforge.drevo
 VERSION     := 0.1.0
 BUILD_NUM   := $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
 CONFIG      ?= release
-# "-" = ad-hoc signature. Pass a real identity for stable privacy permissions:
+# Signing identity. A stable one keeps macOS privacy permissions across rebuilds:
+#   make signing-identity      once: creates the local identity below, used from then on
 #   make app SIGN_ID="Apple Development: Your Name (TEAMID)"
-SIGN_ID     ?= -
+# Without either, "-" = ad-hoc signature.
+LOCAL_SIGN_ID := Drevo Local Signing
+SIGN_ID     ?= $(shell security find-identity -p codesigning 2>/dev/null | grep -q '"$(LOCAL_SIGN_ID)"' && echo "$(LOCAL_SIGN_ID)" || echo -)
 
 # The default swift-build backend fails on a Command-Line-Tools-only install.
 SWIFT_FLAGS := --build-system native
@@ -19,7 +22,7 @@ BIN_DIR      = $(shell swift build $(SWIFT_FLAGS) -c $(CONFIG) --show-bin-path 2
 
 SHELL := /bin/bash
 
-.PHONY: build test app run snapshot icon clean
+.PHONY: build test app run snapshot icon clean signing-identity
 
 # SwiftPM prints a deprecation note for --build-system native on every run; the flag is
 # still required without Xcode, so the note is filtered (exit status is kept).
@@ -46,6 +49,10 @@ app: build icon
 	cp build/AppIcon.icns "build/Drevo.app/Contents/Resources/AppIcon.icns"
 	codesign --force --sign "$(SIGN_ID)" --identifier $(BUNDLE_ID) "build/Drevo.app"
 	@echo "Built build/Drevo.app"
+
+# One-time: a self-signed identity so rebuilds keep their privacy permissions.
+signing-identity:
+	SIGN_NAME="$(LOCAL_SIGN_ID)" scripts/make-signing-identity.sh
 
 run: app
 	open "build/Drevo.app"

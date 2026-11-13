@@ -68,7 +68,10 @@ integration below, so macOS registers the copy that stays put.
 **Privacy prompts.** macOS asks once per protected folder (Desktop, Documents, Downloads,
 removable volumes). For a file manager it's simpler to grant **Full Disk Access** in System
 Settings ▸ Privacy & Security ▸ Full Disk Access. `make app` signs ad hoc, so macOS can
-ask again after a rebuild. To keep the grants, sign with a stable identity:
+ask again after a rebuild. To keep the grants, sign with a stable identity. Either run
+`make signing-identity` once: it creates a self-signed certificate, "Drevo Local
+Signing", in your login keychain, and `make app` signs with it from then on (macOS asks
+for your login password so codesign may use the key; choose Always Allow). Or pass your own:
 `make app SIGN_ID="Apple Development: Your Name (TEAMID)"`.
 
 ## Using Drevo instead of Finder
