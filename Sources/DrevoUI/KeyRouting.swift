@@ -96,13 +96,19 @@ extension KeyMap {
         keys(for: id).first { $0.menuKeyEquivalent != nil }
     }
 
-    /// Default keymap adjusted for preferences, plus ~/Library/Application Support/drevo/keybindings.json.
-    @MainActor
-    static func load(preferences: Preferences, overridesURL: URL? = KeyMap.userOverridesURL) -> (KeyMap, [String]) {
+    /// The registry defaults adjusted for the Return-key setting.
+    static func defaults(returnRenames: Bool) -> KeyMap {
         var map = KeyMap()
-        if preferences.returnRenames { map.applyReturnRenames() }
+        if returnRenames { map.applyReturnRenames() }
+        return map
+    }
+
+    /// The defaults plus the overrides (keybindings.json's contents, if there is one; a
+    /// blank file has none, as `KeyBindingsFile` reads it).
+    static func load(returnRenames: Bool, overrides: Data?) -> (KeyMap, [String]) {
+        var map = defaults(returnRenames: returnRenames)
         var problems: [String] = []
-        if let url = overridesURL, let data = try? Data(contentsOf: url) {
+        if let data = overrides, (try? KeyBindingsFile(data: data))?.isEmpty != true {
             do {
                 problems = try map.applyOverrides(json: data).map(\.description)
             } catch {

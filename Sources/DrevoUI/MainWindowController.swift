@@ -326,7 +326,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
     private func preferencesChanged(key: Preferences.Key?) {
         switch key {
         case .returnRenames:
-            env.reloadKeyMap()
+            break // the environment moves Return and reloads the key map
         case .showSidebar:
             if sidebarItem.isCollapsed == env.preferences.showSidebar { sidebarItem.isCollapsed = !env.preferences.showSidebar }
         case .favorites:

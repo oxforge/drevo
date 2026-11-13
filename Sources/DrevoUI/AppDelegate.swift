@@ -34,7 +34,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         default: break
         }
         env = options.ephemeralSettings ? .ephemeral() : AppEnvironment(preferences: .shared)
-        keyBindingsStamp = Self.modificationDate(KeyMap.userOverridesURL)
         NSApp.mainMenu = MainMenu.build(keyMap: env.keyMap)
         observers.append(NotificationCenter.default.addObserver(forName: AppEnvironment.keyMapDidChange, object: env, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -211,28 +210,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 ?? NSWorkspace.shared.urlForApplication(toOpen: .plainText)
                 ?? URL(fileURLWithPath: "/System/Applications/TextEdit.app")
             env.opener.open([url], withApplicationAt: editor)
-            keyBindingsStamp = Self.modificationDate(url)
+            env.noteKeyBindingsFileWritten()
         } catch {
             env.operations.prompts.showError("Couldn’t create keybindings.json.", detail: error.localizedDescription, in: NSApp.keyWindow)
         }
     }
 
-    private var keyBindingsStamp: Date?
-
-    private static func modificationDate(_ url: URL) -> Date? {
-        (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
-    }
-
-    /// Picks up keybindings.json edits when the user comes back to Drevo.
+    /// Picks up keybindings.json edits made outside Drevo when the user comes back to it.
+    /// The shortcut editor's own saves reload at once and aren't reported here.
     func applicationDidBecomeActive(_ notification: Notification) {
-        guard !options.ephemeralSettings else { return }
-        let stamp = Self.modificationDate(KeyMap.userOverridesURL)
-        guard stamp != keyBindingsStamp else { return }
-        keyBindingsStamp = stamp
-        env.reloadKeyMap()
-        var problems = env.keyMapProblems
-        let conflicts = env.keyMap.conflicts.map { "\($0.key) is bound to \($0.value.map(\.rawValue).joined(separator: " and "))" }
-        problems += conflicts
+        guard !options.ephemeralSettings, let problems = env.reloadKeyMapIfFileChanged() else { return }
         if !problems.isEmpty {
             env.operations.prompts.showError("Some key bindings weren’t applied.", detail: problems.joined(separator: "\n"), in: NSApp.keyWindow)
         }
