@@ -262,7 +262,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
         case .back: return pane.canGoBack
         case .forward: return pane.canGoForward
         case .open: return !pane.selectedItems.isEmpty
-        case .nextPane, .previousPane, .swapPanes, .openInOtherPane, .removePane: return paneGroup.panes.count > 1
+        case .nextPane, .previousPane, .swapPanes, .openInOtherPane, .removePane, .equalizePanes: return paneGroup.panes.count > 1
         case .addPane: return paneGroup.panes.count < 4
         case .copyToOtherPane, .moveToOtherPane: return !pane.selectedItems.isEmpty
         case .rename, .newFolder, .newFile, .moveToTrash, .deleteImmediately, .duplicate, .makeAlias, .copyPath, .pasteMove,

@@ -67,6 +67,7 @@ public extension CommandID {
     static let openInOtherPane = CommandID("pane.openInOther")
     static let addPane = CommandID("pane.add")
     static let removePane = CommandID("pane.remove")
+    static let equalizePanes = CommandID("pane.equalize")
     // File
     static let rename = CommandID("file.rename")
     static let quickLook = CommandID("file.quickLook")
@@ -146,6 +147,7 @@ public enum CommandRegistry {
         CommandSpec(.openInOtherPane, "Open in Other Pane", .panes, keys: ["opt+cmd+o"], help: "Show the selected folder (or this folder) in the other pane"),
         CommandSpec(.addPane, "Add Pane", .panes),
         CommandSpec(.removePane, "Close Pane", .panes),
+        CommandSpec(.equalizePanes, "Make Panes Equal Width", .panes, help: "Or double-click the divider between two panes"),
         // File
         CommandSpec(.rename, "Rename", .file, keys: ["f2", "cmd+r"]),
         CommandSpec(.quickLook, "Quick Look", .file, keys: ["space", "f3", "cmd+y"]),

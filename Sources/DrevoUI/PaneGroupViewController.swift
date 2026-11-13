@@ -13,7 +13,7 @@ final class PaneGroupViewController: NSViewController, NSSplitViewDelegate {
     private(set) var activeIndex = 0
     /// The pane that was active before the current one (D13).
     private var previousIndex: Int?
-    private let splitView = NSSplitView()
+    private let splitView = PaneSplitView()
     private var didInitialLayout = false
 
     init(directories: [URL], viewModes: [ViewMode], sorts: [FileSort] = [], env: AppEnvironment) {
@@ -32,6 +32,7 @@ final class PaneGroupViewController: NSViewController, NSSplitViewDelegate {
         splitView.isVertical = true
         splitView.dividerStyle = .thin
         splitView.delegate = self
+        splitView.onDividerDoubleClick = { [weak self] in self?.equalizeWidths() }
         for pane in panes {
             addChild(pane)
             splitView.addArrangedSubview(pane.view)
@@ -112,6 +113,8 @@ final class PaneGroupViewController: NSViewController, NSSplitViewDelegate {
             addPane()
         case .removePane:
             removeActivePane()
+        case .equalizePanes:
+            equalizeWidths()
         case .copyToOtherPane:
             transferToTarget(.copy)
         case .moveToOtherPane:
@@ -219,5 +222,29 @@ final class PaneGroupViewController: NSViewController, NSSplitViewDelegate {
 
     func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
         proposedMaximumPosition - 220
+    }
+}
+
+/// The split view between panes: a double-click on a divider makes all panes equally wide.
+@MainActor
+final class PaneSplitView: NSSplitView {
+    var onDividerDoubleClick: (() -> Void)?
+    /// How far from a (1 pt) divider a click still counts as on it.
+    private static let dividerSlop: CGFloat = 4
+
+    /// True if `point` (in this view's coordinates) is on a divider between two panes.
+    func isOnDivider(_ point: NSPoint) -> Bool {
+        let views = arrangedSubviews
+        return views.indices.dropLast().contains { i in
+            point.x >= views[i].frame.maxX - Self.dividerSlop && point.x <= views[i + 1].frame.minX + Self.dividerSlop
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2, isOnDivider(convert(event.locationInWindow, from: nil)) {
+            onDividerDoubleClick?()
+            return
+        }
+        super.mouseDown(with: event)
     }
 }
