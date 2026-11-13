@@ -21,3 +21,4 @@
 | global-hotkey | Optional user-chosen global shortcut in Settings ▸ General that brings Drevo to the front. | c828b0d |
 | console-colors | The console renders SGR colours and text styles in command output (no pseudo-terminal). | d8c5691 |
 | background-file-ops | Duplicate, Delete Immediately, undo and redo run as background jobs with progress and Stop. | cc11c18 |
+| shortcut-editor | Settings ▸ Keys edits every command's shortcuts (saved to keybindings.json); extra ⌘/⌃/F-keys work like a command's menu key. | ab1c2f7 |
