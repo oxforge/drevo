@@ -35,8 +35,12 @@ private func run(_ cmd: String, in dir: URL, timeout: Double = 10, configure: ((
 @Test func interruptStopsWholePipeline() {
     let tmp = TempDir()
     let start = Date()
+    // A queue of its own, as ShellCommand uses: the global queue runs nothing while busy
+    // work fills its threads (one per CPU), which held this Ctrl-C back ~5 s on a 3-core
+    // CI runner while other tests ran.
+    let timer = DispatchQueue(label: "interrupt-timer")
     let r = run("sleep 30 | cat", in: tmp.url) { c in
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) { c.interrupt(killAfter: 1) }
+        timer.asyncAfter(deadline: .now() + 0.3) { c.interrupt(killAfter: 1) }
     }
     #expect(Date().timeIntervalSince(start) < 5)
     #expect(r.status != 0)

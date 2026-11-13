@@ -58,6 +58,23 @@ import Testing
         #expect(Date().timeIntervalSince(start) < 4)
     }
 
+    /// The shell ends on its own thread and the console catches up on the main thread
+    /// later; until it has, the command still counts as running, so nothing reads a
+    /// half-written transcript and no next command starts in between.
+    @Test func runsUntilTheConsoleShowsTheEnd() throws {
+        let wc = window()
+        wc.commandBar.field.stringValue = "echo end-marker"
+        wc.commandBar.submit(inTerminal: false)
+        let command = try #require(wc.shell.running)
+        #expect(command.waitUntilExit(timeout: 5), "the shell has exited; the main thread hasn't caught up")
+        #expect(wc.shell.isRunning)
+        #expect(!wc.shell.run("echo second", in: fx.url), "no second command before the first one's end is shown")
+        #expect(waitFor { !wc.shell.isRunning })
+        #expect(wc.workspace.console.transcript.contains("end-marker\n"))
+        #expect(wc.workspace.console.transcript.contains("exit 0"))
+        #expect(!wc.workspace.console.transcript.contains("echo second"))
+    }
+
     @Test func historyAndSelectionInsertion() throws {
         let wc = window()
         wc.env.preferences.commandHistory = ["ls -la", "git status"]

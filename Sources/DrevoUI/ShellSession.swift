@@ -26,7 +26,11 @@ final class ShellSession {
         self.setup = setup
     }
 
-    var isRunning: Bool { (running?.isRunning ?? false) || waitingForSetup }
+    /// Until the console has shown how the command ended, not just until its process is
+    /// gone: that happens on the command's own thread, the console catches up on the main
+    /// run loop afterwards (`running` is cleared there), and in between a next command
+    /// would interleave with the end of this one.
+    var isRunning: Bool { running != nil || waitingForSetup }
 
     /// Called when the command line gets focus: load the shell setup while the user types.
     func prepare() {
