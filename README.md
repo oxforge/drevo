@@ -203,7 +203,7 @@ system-wide shortcut; a unit test checks the defaults against that list.
 | Sort by Name / Kind / Date Modified / Size (again reverses) | ⌃⌥⌘1 / ⌃⌥⌘2 / ⌃⌥⌘5 / ⌃⌥⌘6, or the sort button in the pane header |
 | Open in other pane, Swap panes | ⌥⌘O, ⌘U |
 | Home, Desktop, Documents, Downloads, Applications, Utilities | ⇧⌘H, ⇧⌘D, ⇧⌘O, ⌥⌘L, ⇧⌘A, ⇧⌘U |
-| Open in Terminal | ⌥⌘T |
+| Open in Terminal, Run the command line's command there | ⌥⌘T, ⌘↩ |
 | Run shell command / Stop it / Console | `!` or ⌥⌘R / ⌘. / ⌥⌘J |
 | Command palette | ⇧⌘P |
 

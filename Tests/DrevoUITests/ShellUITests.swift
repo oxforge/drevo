@@ -127,6 +127,26 @@ import Testing
         #expect(perms?.intValue == 0o700)
     }
 
+    /// A text field gets `noop:` for ⌘↩, never `insertNewline:`, so the field can't see
+    /// it: the menu item has to carry the key, and runs only from the command line.
+    @Test func cmdReturnRunsTheCommandLineInTerminal() throws {
+        let wc = window()
+        let menu = MainMenu.build(keyMap: wc.env.keyMap)
+        func items(_ menu: NSMenu) -> [NSMenuItem] { menu.items.flatMap { [$0] + ($0.submenu.map(items) ?? []) } }
+        let item = try #require(items(menu).first { $0.representedObject as? String == CommandID.runInTerminal.rawValue })
+        #expect(item.keyEquivalent == "\r" && item.keyEquivalentModifierMask == [.command])
+
+        #expect(!wc.validateMenuItem(item), "off outside the command line, so ⌘↩ in the file list does nothing")
+        wc.commandBar.field.stringValue = "echo hi"
+        wc.commandBar.focus()
+        #expect(wc.validateMenuItem(item))
+        wc.performCommand(item)
+        let script = try #require(opener.opened.last?.first)
+        #expect(script.pathExtension == "command")
+        #expect(try String(contentsOf: script, encoding: .utf8).contains("echo hi"))
+        #expect(wc.commandBar.field.stringValue.isEmpty)
+    }
+
     @Test func scriptRunsCommandThenStaysInteractive() throws {
         // Run the generated script with sh, with the "interactive shell" swapped for `exit 0`
         // so it exits: proves quoting survives a real shell. Each swap must find its text:

@@ -202,7 +202,7 @@ public enum CommandRegistry {
         CommandSpec(.runCommand, "Run Shell Command…", .shell, keys: ["!", "opt+cmd+r"], help: "Run a command in this folder with your shell"),
         CommandSpec(.toggleConsole, "Show Console", .shell, keys: ["opt+cmd+j"], help: "Output of commands run from the command line"),
         CommandSpec(.stopCommand, "Stop Running Command", .shell, keys: ["cmd+."], help: "Interrupt the command running in the console"),
-        CommandSpec(.runInTerminal, "Run Command in Terminal", .shell, help: "From the command line: ⌘↩ runs it in your terminal app"),
+        CommandSpec(.runInTerminal, "Run Command in Terminal", .shell, keys: ["cmd+return"], help: "From the command line: run it in your terminal app"),
         // Window
         CommandSpec(.newWindow, "New Window", .window, keys: ["cmd+n"]),
         // Tabs belong to a pane; they are window-category commands so they work while a

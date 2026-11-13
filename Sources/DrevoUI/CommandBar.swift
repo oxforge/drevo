@@ -91,7 +91,8 @@ final class CommandBar: NSView, NSTextFieldDelegate {
         let flags = NSApp.currentEvent?.modifierFlags ?? []
         switch selector {
         case #selector(NSResponder.insertNewline(_:)):
-            flags.contains(.command) ? submit(inTerminal: true) : submit(inTerminal: false)
+            // ⌘↩ never gets here (the field sees it as `noop:`): it's Run Command in Terminal's menu key.
+            submit(inTerminal: false)
             return true
         case #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)):
             insertSelection(fullPaths: flags.contains(.shift))
