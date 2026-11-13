@@ -23,7 +23,8 @@ final class FakeDrag: NSObject, @preconcurrency NSDraggingInfo {
 
     var draggingDestinationWindow: NSWindow? { nil }
     var draggingSourceOperationMask: NSDragOperation { mask }
-    var draggingLocation: NSPoint { .zero }
+    /// In window coordinates, as AppKit reports it.
+    var draggingLocation: NSPoint = .zero
     var draggedImageLocation: NSPoint { .zero }
     var draggedImage: NSImage? { nil }
     var draggingPasteboard: NSPasteboard { pasteboard }

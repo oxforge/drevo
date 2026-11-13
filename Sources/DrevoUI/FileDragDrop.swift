@@ -64,8 +64,14 @@ enum FileDragDrop {
         } else {
             table.setDropRow(-1, dropOperation: .on)
         }
-        // Refuse dropping a folder into itself, or items onto the folder they're already in.
-        if dragged.contain(dest) { return [] }
+        return dropOperation(info, onto: dest)
+    }
+
+    /// What dropping the drag's files into `dest` would do; `[]` when it makes no sense:
+    /// a folder into itself, or a move of items onto the folder they're already in.
+    static func dropOperation(_ info: NSDraggingInfo, onto dest: URL) -> NSDragOperation {
+        let dragged = draggedFiles(info)
+        guard !dragged.urls.isEmpty, !dragged.contain(dest) else { return [] }
         let keys = modifierKeys(info.draggingSourceOperationMask)
         let kind = dragged.kind(onto: dest, optionKey: keys.option, commandKey: keys.command)
         if kind == .move, dragged.areAll(in: dest) { return [] }

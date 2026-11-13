@@ -2,17 +2,28 @@ import AppKit
 import DrevoCore
 
 /// Breadcrumb path: icon + name segments with chevrons. When space runs short, middle
-/// segments collapse into a "…" button whose menu lists them.
+/// segments collapse into a "…" button whose menu lists them. Files dragged onto a
+/// segment are copied or moved into that folder, by the rules of a drop on a folder row.
 @MainActor
 final class PathBarView: NSView {
     var onNavigate: ((URL) -> Void)?
     /// Clicking the current folder's segment edits the path (Windows Explorer style).
     var onEditRequest: (() -> Void)?
+    /// Files were dropped onto a segment's folder.
+    var onDrop: (([URL], URL, TransferKind) -> Void)?
+    /// The segment a drag hovers over and would drop into.
+    private(set) weak var dropSegment: SegmentButton? {
+        didSet {
+            guard dropSegment !== oldValue else { return }
+            oldValue?.isDropTarget = false
+            dropSegment?.isDropTarget = true
+        }
+    }
     private let stack = NSStackView()
     private(set) var url: URL?
     var isActive = false { didSet { refreshColors() } }
     private var units: [NSView] = []
-    private var segmentButtons: [SegmentButton] = []
+    private(set) var segmentButtons: [SegmentButton] = []
     private var segmentURLs: [URL] = []
     private let ellipsis = NSButton(title: "…", target: nil, action: nil)
     private var ellipsisUnit = NSStackView()
@@ -41,6 +52,7 @@ final class PathBarView: NSView {
         ellipsis.action = #selector(showHidden(_:))
         ellipsis.contentTintColor = .secondaryLabelColor
         ellipsis.toolTip = "Hidden folders"
+        registerForDraggedTypes(FileDragDrop.acceptedTypes)
     }
 
     @available(*, unavailable)
@@ -169,9 +181,53 @@ final class PathBarView: NSView {
         if let url = sender.representedObject as? URL { onNavigate?(url) }
     }
 
+    // MARK: Drop target
+
+    /// The visible segment under `point` (in this view's coordinates).
+    func segment(at point: NSPoint) -> SegmentButton? {
+        segmentButtons.first { button in
+            !button.isHiddenOrHasHiddenAncestor && button.convert(button.bounds, to: self).insetBy(dx: -2, dy: -4).contains(point)
+        }
+    }
+
+    /// Highlights the segment under the drag and says what a drop there would do.
+    private func updateDrop(_ info: NSDraggingInfo) -> NSDragOperation {
+        guard let segment = segment(at: convert(info.draggingLocation, from: nil)) else {
+            dropSegment = nil
+            return []
+        }
+        let operation = FileDragDrop.dropOperation(info, onto: segment.url)
+        dropSegment = operation.isEmpty ? nil : segment
+        return operation
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { updateDrop(sender) }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { updateDrop(sender) }
+    override func draggingExited(_ sender: NSDraggingInfo?) { dropSegment = nil }
+    override func draggingEnded(_ sender: NSDraggingInfo) { dropSegment = nil }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        defer { dropSegment = nil }
+        guard !updateDrop(sender).isEmpty, let segment = dropSegment else { return false }
+        let urls = FileDragDrop.fileURLs(sender)
+        guard !urls.isEmpty else { return false }
+        onDrop?(urls, segment.url, FileDragDrop.kind(sender, sources: urls, destination: segment.url))
+        return true
+    }
+
     final class SegmentButton: NSButton {
         let url: URL
         let isLast: Bool
+        /// A drag hovers over this folder and would drop into it.
+        var isDropTarget = false {
+            didSet {
+                wantsLayer = true
+                layer?.cornerRadius = 4
+                effectiveAppearance.performAsCurrentDrawingAppearance {
+                    layer?.backgroundColor = isDropTarget ? NSColor.controlAccentColor.withAlphaComponent(0.3).cgColor : nil
+                }
+            }
+        }
 
         init(url: URL, isLast: Bool) {
             self.url = url

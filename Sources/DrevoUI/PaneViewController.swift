@@ -75,6 +75,10 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
             self?.activate(focus: true)
             self?.navigate(to: url, selecting: nil)
         }
+        header.pathBar.onDrop = { [weak self] urls, destination, kind in
+            guard let self else { return }
+            self.browser(self.browser, drop: urls, onto: destination, kind: kind)
+        }
         header.onClick = { [weak self] in self?.activate(focus: true) }
         header.onPathAreaClick = { [weak self] in self?.beginPathEditing() }
         header.pathBar.onEditRequest = { [weak self] in self?.beginPathEditing() }
