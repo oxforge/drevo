@@ -1,8 +1,9 @@
 // Draws the Drevo app icon into an .iconset folder (convert with `iconutil -c icns`).
 // Usage: swift scripts/make-icon.swift build/AppIcon.iconset
 //
-// The design ("Glass panes", deep indigo): an indigo tile holding two panes. The left pane
-// is solid white with a cursor row (the active pane); the right one is frosted glass.
+// The design ("Sprouting root", deep indigo): an indigo tile holding a small folder tree.
+// The root row is green and sprouts two leaves ("drevo" means tree); a connector leads
+// down to the child rows, the first of which is the selected one (solid white).
 import AppKit
 
 let outDir = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "AppIcon.iconset")
@@ -59,37 +60,71 @@ func drawIcon(size: CGFloat) -> NSBitmapImageRep {
     color(0xFFFFFF, 0.22).setStroke()
     rim.stroke()
 
-    // Active pane: solid white, lifted off the tile.
-    withShadow(alpha: 0.45, blur: 4, drop: 3) {
-        color(0xFFFFFF).setFill()
-        rounded(21, 24, 37, 70, 8.5).fill()
+    func point(_ x: CGFloat, _ y: CGFloat) -> NSPoint {
+        NSPoint(x: 100 * s + x * unit, y: 100 * s + (120 - y) * unit)
+    }
+    /// A leaf growing from `base` to `tip`, bulging to the sides given by the control points.
+    func leaf(base: (CGFloat, CGFloat), tip: (CGFloat, CGFloat),
+              out: (CGFloat, CGFloat), back: (CGFloat, CGFloat)) -> NSBezierPath {
+        let path = NSBezierPath()
+        path.move(to: point(base.0, base.1))
+        path.curve(to: point(tip.0, tip.1), controlPoint1: point(out.0, base.1), controlPoint2: point(tip.0, out.1))
+        path.curve(to: point(base.0, base.1), controlPoint1: point(back.0, tip.1), controlPoint2: point(base.0, back.1))
+        path.close()
+        return path
+    }
+    func stroke(_ points: [(CGFloat, CGFloat)], width: CGFloat, _ strokeColor: NSColor) {
+        let path = NSBezierPath()
+        path.move(to: point(points[0].0, points[0].1))
+        for p in points.dropFirst() { path.line(to: point(p.0, p.1)) }
+        path.lineWidth = width * unit
+        path.lineCapStyle = .round
+        path.lineJoinStyle = .round
+        strokeColor.setStroke()
+        path.stroke()
     }
 
-    // Inactive pane: frosted glass with a bright edge.
-    color(0xFFFFFF, 0.24).setFill()
-    rounded(62, 24, 37, 70, 8.5).fill()
-    let edge = rounded(62.75, 24.75, 35.5, 68.5, 7.75)
-    edge.lineWidth = 1.5 * unit
-    color(0xFFFFFF, 0.75).setStroke()
-    edge.stroke()
+    let green = color(0x9BD45A), lightGreen = color(0xC9EDA0), connector = color(0xB9B4F2)
+    let faded = color(0xFFFFFF, 0.55)
 
-    // Rows. Below 64 px they blur into noise, so only the cursor row is kept, enlarged.
-    let detailed = size >= 64
-    if detailed {
-        color(0xCDCBEC).setFill()
-        for (y, w) in [(32.0, 25.0), (57, 25), (67, 18), (77, 22)] {
-            rounded(27, y, w, 5, 2.5).fill()
+    // Below 64 px three thin rows blur into noise, so the small sizes keep the root, its
+    // sprout and two rows, all drawn heavier.
+    if size >= 64 {
+        stroke([(34, 52), (34, 98), (46, 98)], width: 4, connector)
+        stroke([(34, 64), (46, 64)], width: 4, connector)
+        stroke([(34, 81), (46, 81)], width: 4, connector)
+
+        stroke([(42, 38), (42, 28)], width: 4, green)
+        green.setFill()
+        leaf(base: (42, 33), tip: (27, 19), out: (32, 27), back: (37, 25)).fill()
+        lightGreen.setFill()
+        leaf(base: (42, 29), tip: (58, 14), out: (52, 23), back: (48, 20)).fill()
+
+        withShadow(alpha: 0.4, blur: 3, drop: 2) {
+            green.setFill()
+            rounded(24, 36, 52, 14, 7).fill()
+            color(0xFFFFFF).setFill()
+            rounded(52, 58, 42, 12, 6).fill()
         }
-        color(0xFFFFFF, 0.62).setFill()
-        for (y, w) in [(32.0, 25.0), (44, 18), (56, 22), (68, 15)] {
-            rounded(68, y, w, 5, 2.5).fill()
-        }
-    }
-    color(0x4A3FD6).setFill()
-    if detailed {
-        rounded(25, 42, 29, 10, 4.5).fill()
+        faded.setFill()
+        rounded(52, 75, 30, 12, 6).fill()
+        rounded(52, 92, 38, 12, 6).fill()
     } else {
-        rounded(26, 40, 27, 16, 5).fill()
+        stroke([(36, 58), (36, 96), (50, 96)], width: 8, connector)
+        stroke([(36, 72), (50, 72)], width: 8, connector)
+
+        stroke([(45, 40), (45, 28)], width: 7, green)
+        green.setFill()
+        leaf(base: (45, 34), tip: (22, 13), out: (30, 25), back: (37, 22)).fill()
+        lightGreen.setFill()
+        leaf(base: (45, 30), tip: (69, 9), out: (60, 21), back: (54, 18)).fill()
+
+        green.setFill()
+        rounded(20, 38, 60, 20, 10).fill()
+        color(0xFFFFFF).setFill()
+        rounded(56, 63, 44, 18, 9).fill()
+        faded.setFill()
+        rounded(56, 87, 44, 18, 9).fill()
     }
     return rep
 }
