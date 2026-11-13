@@ -206,8 +206,8 @@ wherever the command's first key does, text fields included.
 The editor saves to `~/Library/Application Support/drevo/keybindings.json`, which you can
 also edit by hand: Help ▸ **Edit keybindings.json** creates it and a
 `keybindings.defaults.json` reference beside it. The editor writes only the commands that
-differ from their defaults and keeps everything else in the file as you wrote it. Map
-command ids to keys:
+differ from their defaults and keeps every other entry's value as you wrote it (it
+re-indents the file and sorts the entries). Map command ids to keys:
 
 ```json
 {
