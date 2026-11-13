@@ -103,7 +103,7 @@ public enum KeyRecording {
     private static func fileListNote(_ combo: KeyCombo) -> String? {
         guard combo.isPlainTyping else { return nil }
         if case .character = combo.key, combo.modifiers.subtracting(.shift).isEmpty {
-            return "Works in the file list only. Typing \(combo.keyGlyph) will no longer start the filter."
+            return "Works in the file list only. Typing \(combo.keyGlyph) will no longer start or extend the filter."
         }
         return "Works in the file list only."
     }

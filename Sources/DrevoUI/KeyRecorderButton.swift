@@ -38,12 +38,33 @@ class KeyRecorderButton: NSButton {
         bezelColor = isRecording ? .controlAccentColor : nil
     }
 
+    /// Recording needs the key focus; without it the keys would go elsewhere.
     @objc func toggleRecording(_ sender: Any?) {
-        isRecording.toggle()
-        if isRecording { window?.makeFirstResponder(self) }
+        isRecording = isRecording ? false : window?.makeFirstResponder(self) == true
     }
 
     override var acceptsFirstResponder: Bool { true }
+
+    // A click in another window, closing the window, or the keycap leaving it (another
+    // Settings tab) ends recording, so no later key is taken by surprise.
+    private var windowObservers: [NSObjectProtocol] = []
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow !== window { isRecording = false }
+        super.viewWillMove(toWindow: newWindow)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        windowObservers.forEach(NotificationCenter.default.removeObserver)
+        windowObservers = []
+        guard let window else { return }
+        for name in [NSWindow.didResignKeyNotification, NSWindow.willCloseNotification] {
+            windowObservers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: nil) { [weak self] _ in
+                MainActor.assumeIsolated { self?.isRecording = false }
+            })
+        }
+    }
 
     override func resignFirstResponder() -> Bool {
         isRecording = false

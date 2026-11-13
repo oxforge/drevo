@@ -642,6 +642,12 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
             clearFilter()
             return true
         }
+        // A bare Backspace fixes a filter being typed before any binding sees it, so a
+        // Backspace bound to Move to Trash never trashes a file mid-filter.
+        if event.keyCode == 51, KeyCombo.Modifiers(event.modifierFlags).isEmpty, !filter.isEmpty {
+            deleteFilterCharacter()
+            return true
+        }
         if bareEsc, searchQuery != nil { // Esc leaves the search results
             endSearch()
             return true

@@ -152,7 +152,55 @@ import Testing
         #expect(ShortcutsWindow.shownText?.contains("Rename\tF9") == true)
     }
 
+    @Test func leavingAKeycapClearsOnlyItsOwnHover() {
+        let model = editor()
+        let first = ShortcutEditorModel.HoveredKey(command: .rename, key: combo("f2"))
+        let second = ShortcutEditorModel.HoveredKey(command: .rename, key: combo("cmd+r"))
+        model.hover(first, inside: true)
+        model.hover(second, inside: true)
+        model.hover(first, inside: false) // the pointer left the first after entering the second
+        #expect(model.hoveredKey == second)
+        model.hover(second, inside: false)
+        #expect(model.hoveredKey == nil)
+    }
+
     // MARK: Keycap recorder
+
+    func recordingButton() -> (NSWindow, KeyRecorderButton) {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 80), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let button = KeyRecorderButton(frame: NSRect(x: 0, y: 0, width: 120, height: 24))
+        window.contentView!.addSubview(button)
+        return (window, button)
+    }
+
+    @Test func recordingStopsWhenTheWindowResignsKeyOrCloses() {
+        let (window, button) = recordingButton()
+        var ended = 0
+        button.onEnd = { ended += 1 }
+        button.toggleRecording(nil)
+        #expect(button.isRecording)
+        NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: window)
+        #expect(!button.isRecording, "clicking another window stops recording")
+
+        button.toggleRecording(nil)
+        window.close()
+        #expect(!button.isRecording, "closing Settings stops recording")
+        #expect(ended == 2)
+    }
+
+    @Test func recordingStopsWhenTheKeycapGoesAway() {
+        let (_, button) = recordingButton()
+        button.toggleRecording(nil)
+        button.removeFromSuperview() // another Settings tab, or the row scrolled away
+        #expect(!button.isRecording)
+    }
+
+    @Test func recordingNeedsTheKeyFocus() {
+        let button = KeyRecorderButton(frame: NSRect(x: 0, y: 0, width: 120, height: 24))
+        button.toggleRecording(nil) // in no window: it can't take keys
+        #expect(!button.isRecording)
+    }
 
     @Test func keycapRecordsEveryReadingAndCancelsOnEsc() {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 80), styleMask: [.titled], backing: .buffered, defer: false)

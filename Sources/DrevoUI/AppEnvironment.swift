@@ -72,14 +72,14 @@ final class AppEnvironment {
 
     func reloadKeyMap() {
         loadKeyMap()
-        overridesStamp = overridesURL.flatMap(Self.modificationDate)
+        overridesStamp = overridesFile.flatMap(Self.modificationDate)
         NotificationCenter.default.post(name: Self.keyMapDidChange, object: self)
     }
 
     /// Reloads when keybindings.json changed outside Drevo since the last reload; returns
     /// what's wrong with it then (unknown commands, unreadable keys, clashes), else nil.
     func reloadKeyMapIfFileChanged() -> [String]? {
-        guard let url = overridesURL, Self.modificationDate(url) != overridesStamp else { return nil }
+        guard let url = overridesFile, Self.modificationDate(url) != overridesStamp else { return nil }
         reloadKeyMap()
         return keyMapProblems + keyMap.conflicts.map { "\($0.key) is bound to \($0.value.map(\.rawValue).joined(separator: " and "))" }
     }
@@ -87,7 +87,7 @@ final class AppEnvironment {
     /// Notes keybindings.json as it is now as seen: loaded at launch, or written by Drevo
     /// itself (Help ▸ Edit keybindings.json).
     func noteKeyBindingsFileWritten() {
-        overridesStamp = overridesURL.flatMap(Self.modificationDate)
+        overridesStamp = overridesFile.flatMap(Self.modificationDate)
     }
 
     // MARK: Shortcut editor
@@ -108,19 +108,31 @@ final class AppEnvironment {
         try updateOverrides(replacingUnreadable: true) { $0.removeAllCommands() }
     }
 
+    /// keybindings.json itself: a file linked into place (from a dotfiles folder, say) is
+    /// read and written through the link, which stays a link.
+    private var overridesFile: URL? { overridesURL?.resolvingSymlinksInPath() }
+
+    /// The file's contents, or nil when there is no file. Any other read error throws:
+    /// a file Drevo can't open must never pass for an empty one.
+    private static func readOverrides(_ url: URL) throws -> Data? {
+        do { return try Data(contentsOf: url) } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+            return nil
+        }
+    }
+
     /// Reads the file fresh, changes it, writes it if that changed anything, and reloads.
     private func updateOverrides(replacingUnreadable: Bool = false, _ change: (inout KeyBindingsFile) -> Void) throws {
-        guard let url = overridesURL else {
+        guard let url = overridesFile else {
             change(&memoryOverrides)
             return reloadKeyMap()
         }
         var file = KeyBindingsFile()
         var unreadable = false
-        if let data = try? Data(contentsOf: url) {
-            do { file = try KeyBindingsFile(data: data) } catch {
-                guard replacingUnreadable else { throw error }
-                unreadable = true
-            }
+        do {
+            if let data = try Self.readOverrides(url) { file = try KeyBindingsFile(data: data) }
+        } catch {
+            guard replacingUnreadable else { throw error }
+            unreadable = true
         }
         let before = file
         change(&file)
@@ -139,10 +151,18 @@ final class AppEnvironment {
     }
 
     private func loadKeyMap() {
-        let data = overridesURL.map { try? Data(contentsOf: $0) } ?? memoryOverrides.data
-        (keyMap, keyMapProblems) = KeyMap.load(returnRenames: preferences.returnRenames, overrides: data)
         keyBindingsFileError = nil
-        if let data {
+        var data: Data? = memoryOverrides.data
+        if let url = overridesFile {
+            do { data = try Self.readOverrides(url) } catch {
+                data = nil
+                keyBindingsFileError = error.localizedDescription
+            }
+        }
+        (keyMap, keyMapProblems) = KeyMap.load(returnRenames: preferences.returnRenames, overrides: data)
+        if let error = keyBindingsFileError {
+            keyMapProblems.insert("keybindings.json: \(error)", at: 0)
+        } else if let data {
             do { _ = try KeyBindingsFile(data: data) } catch { keyBindingsFileError = error.localizedDescription }
         }
     }

@@ -108,9 +108,10 @@ final class ShortcutEditorModel: ObservableObject {
 
     func cancelNotice() { notice = nil }
 
-    /// The pointer entered a keycap (or left one: nil, but only for the one it left).
-    func hover(_ key: HoveredKey?) {
-        if key != nil || hoveredKey != nil { hoveredKey = key }
+    /// The pointer entered or left a keycap. Leaving clears only that keycap's hover:
+    /// the next one may have been entered first.
+    func hover(_ key: HoveredKey, inside: Bool) {
+        if inside { hoveredKey = key } else if hoveredKey == key { hoveredKey = nil }
     }
 
     /// A refusal goes away with the recording it answered.
@@ -271,14 +272,19 @@ private struct Keycap: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
-                    .offset(x: 5, y: -5)
+                    .offset(x: 4, y: -4)
                     .help("Remove \(title)")
                 }
             }
+            // The hover area reaches 4 points past the keycap, so the × (which sticks out
+            // by that much) stays up while the pointer moves onto it.
+            .padding(4)
+            .contentShape(Rectangle())
             .onHover { inside in
                 guard case .replace(let key) = slot else { return }
-                editor.hover(inside ? ShortcutEditorModel.HoveredKey(command: id, key: key) : nil)
+                editor.hover(ShortcutEditorModel.HoveredKey(command: id, key: key), inside: inside)
             }
+            .padding(-4)
     }
 }
 

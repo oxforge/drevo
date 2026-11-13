@@ -73,6 +73,22 @@ import Testing
         #expect(first.currentDirectory.lastPathComponent == "beta")
     }
 
+    @Test func backspaceShortensAnActiveFilterEvenWhenBound() throws {
+        let wc = try window(extra: [.moveToTrash: ["f8", "cmd+backspace", "backspace"]])
+        let first = wc.paneGroup.panes[0]
+        let one = fx.url.appendingPathComponent("one.txt")
+        first.browser.select([one])
+        first.typeIntoFilter("o")
+        press(key(51, "\u{7f}", [], window: wc.window!), in: wc.window!)
+        #expect(first.filter.isEmpty, "Backspace fixes the filter first")
+        #expect(FileManager.default.fileExists(atPath: one.path), "nothing is trashed while typing a filter")
+
+        // With no filter, the binding works.
+        first.browser.select([one])
+        press(key(51, "\u{7f}", [], window: wc.window!), in: wc.window!)
+        #expect(!FileManager.default.fileExists(atPath: one.path))
+    }
+
     @Test func bareEscStillClearsTheFilter() throws {
         let wc = try window(extra: [.swapPanes: ["cmd+u", "opt+escape"]])
         let first = wc.paneGroup.panes[0]

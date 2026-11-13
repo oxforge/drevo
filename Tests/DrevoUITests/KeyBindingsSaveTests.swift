@@ -80,6 +80,29 @@ import Testing
         #expect(env.keyMap.keys(for: .rename) == KeyMap().keys(for: .rename))
     }
 
+    @Test func savingKeepsASymlinkedFile() throws {
+        // keybindings.json kept in a dotfiles folder and linked into place.
+        let real = fx.file("dotfiles/keybindings.json", #"{ "_comment": "mine" }"#)
+        try FileManager.default.createDirectory(at: overrides.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: overrides, withDestinationURL: real)
+        let env = environment()
+        try env.saveKeyChanges([.rename: [combo("f9")]])
+        #expect(try FileManager.default.destinationOfSymbolicLink(atPath: overrides.path) == real.path)
+        let saved = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: real)) as? NSDictionary)
+        #expect(saved == ["_comment": "mine", "file.rename": ["f9"]])
+    }
+
+    @Test func aFileThatCantBeOpenedIsNeverOverwritten() throws {
+        fx.file("drevo/keybindings.json", #"{ "file.rename": "f9" }"#)
+        try FileManager.default.setAttributes([.posixPermissions: 0o200], ofItemAtPath: overrides.path) // write-only
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: overrides.path) }
+        let env = environment()
+        #expect(env.keyBindingsFileError != nil)
+        #expect(throws: (any Error).self) { try env.saveKeyChanges([.duplicate: [combo("f10")]]) }
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: overrides.path)
+        #expect(try String(contentsOf: overrides, encoding: .utf8) == #"{ "file.rename": "f9" }"#)
+    }
+
     @Test func resetAllReplacesAnUnreadableFile() throws {
         let env = environment(file: "{ nope")
         try env.resetAllKeys()
