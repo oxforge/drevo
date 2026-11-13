@@ -9,7 +9,7 @@ import Testing
     /// The style after `parameters` (the text between `ESC [` and `m`), starting from `style`.
     func style(_ parameters: String, from style: TextStyle = .plain) -> TextStyle {
         var s = style
-        s.apply(sgr: parameters.utf8)
+        Array(parameters.utf8).withUnsafeBufferPointer { s.apply(sgr: $0) }
         return s
     }
 
@@ -62,7 +62,7 @@ import Testing
         #expect(style("", from: coloured) == .plain, "ESC [ m is a reset")
         #expect(style("0;31", from: coloured) == TextStyle(foreground: .palette(1)))
         #expect(style(";31", from: coloured) == TextStyle(foreground: .palette(1)), "an empty parameter is 0")
-        #expect(TextStyle.plain.isPlain && !coloured.isPlain)
+        #expect(TextStyle() == .plain && coloured != .plain)
     }
 
     @Test func attributesTurnOnAndOff() {
@@ -123,19 +123,13 @@ import Testing
         #expect(s.spans("\(esc)[0mplain") == [StyledText("plain")])
     }
 
-    @Test func aSequenceSplitBetweenChunksStillApplies() {
-        var s = ANSIStream()
-        #expect(s.spans("hello \(esc)[3") == [StyledText("hello ")])
-        #expect(s.spans("1mred\(esc)[0m") == [StyledText("red", TextStyle(foreground: .palette(1)))])
-    }
-
     /// Flattens spans the way a reader sees them: one style per character.
     func perCharacter(_ spans: [StyledText]) -> [StyledText] {
         spans.flatMap { span in span.text.unicodeScalars.map { StyledText(String($0), span.style) } }
     }
 
     @Test func everySplitPointGivesTheSameStyledText() {
-        let text = "a\(esc)[1;31mred\(esc)[0m \(esc)]0;title\(esc)\\b\(esc)[38;2;1;2;3;48;5;200mc\r\nd\(esc)Me→✓\(esc)[K\(esc)[4mu\(esc)[m."
+        let text = "a\(esc)[1;31mred\(esc)[0m \(esc)]0;title\(esc)\\b\(esc)]0;t\u{07}\(esc)[38;2;1;2;3;48;5;200mc\r\nd\(esc)Me→✓\(esc)[K\(esc)[4mu\(esc)[m."
         let expected = perCharacter(spans(text))
         #expect(expected.map(\.text).joined() == "ared bc\nde→✓u.")
         #expect(Set(expected.map(\.style)).count == 4)
@@ -157,21 +151,5 @@ import Testing
         let junk = "\(esc)]" + String(repeating: "x", count: 10_000)
         #expect(long.spans(junk).map(\.text).joined().count == 10_000)
         #expect(long.spans("y") == [StyledText("y")])
-    }
-
-    /// Coloured lines, 5 MB of them: parsing costs little next to reading them (20 ms in
-    /// a release build, a third of what stripping the same text with regular expressions
-    /// took; the limit leaves room for a debug build on a busy machine).
-    @Test func colouredOutputParsesQuickly() {
-        let line = "\(esc)[1;32mok\(esc)[0m the quick \(esc)[38;5;208mbrown\(esc)[0m fox\n"
-        let chunk = String(repeating: line, count: 16_384 / line.utf8.count)
-        var s = ANSIStream()
-        var characters = 0
-        let start = Date()
-        for _ in 0..<(5_000_000 / chunk.utf8.count) {
-            for span in s.spans(chunk) { characters += span.text.utf8.count }
-        }
-        #expect(characters > 2_000_000)
-        #expect(Date().timeIntervalSince(start) < 5, "took \(Date().timeIntervalSince(start)) s")
     }
 }

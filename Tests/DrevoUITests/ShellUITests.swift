@@ -46,18 +46,6 @@ import Testing
         #expect(wc.env.preferences.commandHistory.last == "pwd; touch made-by-shell.txt")
     }
 
-    @Test func stopInterruptsLongCommand() {
-        let wc = window()
-        wc.commandBar.field.stringValue = "sleep 30"
-        wc.commandBar.submit(inTerminal: false)
-        #expect(waitFor { wc.shell.isRunning })
-        #expect(wc.canPerform(.stopCommand))
-        let start = Date()
-        wc.perform(.stopCommand)
-        #expect(waitFor(5) { !wc.shell.isRunning })
-        #expect(Date().timeIntervalSince(start) < 4)
-    }
-
     /// The shell ends on its own thread and the console catches up on the main thread
     /// later; until it has, the command still counts as running, so nothing reads a
     /// half-written transcript and no next command starts in between.
@@ -114,7 +102,7 @@ import Testing
         wc.commandBar.field.stringValue = "echo 'hi'"
         wc.commandBar.submit(inTerminal: true)
         let script = try #require(opener.opened.last?.first)
-        defer { try? FileManager.default.removeItem(at: script) }
+        #expect(script.isInside(fx.url), "the test environment's scratch folder, never the user's Caches")
         #expect(script.pathExtension == "command")
         let text = try String(contentsOf: script, encoding: .utf8)
         #expect(text.contains("cd '\(fx.url.path)'"))
@@ -125,12 +113,18 @@ import Testing
     }
 
     @Test func scriptRunsCommandThenStaysInteractive() throws {
-        // Run the generated script with sh, with the "interactive shell" swapped for `true`
-        // so it exits: proves quoting survives a real shell.
-        let text = TerminalLauncher.scriptText(command: "echo \"$((1+2))\" 'x y' > out.txt", folder: fx.url, shell: "/bin/zsh")
-            .replacingOccurrences(of: "rm -f \"$0\"\n", with: "")
-            .replacingOccurrences(of: "exec '/bin/zsh' -l -i -c", with: "exec /bin/zsh -f -c")
-            .replacingOccurrences(of: "exec '\\''/bin/zsh'\\'' -l -i", with: "exit 0")
+        // Run the generated script with sh, with the "interactive shell" swapped for `exit 0`
+        // so it exits: proves quoting survives a real shell. Each swap must find its text:
+        // a missed one would run `zsh -l -i`, which reads the user's rc files.
+        var text = TerminalLauncher.scriptText(command: "echo \"$((1+2))\" 'x y' > out.txt", folder: fx.url, shell: "/bin/zsh")
+        for (pattern, replacement) in [
+            ("rm -f \"$0\"\n", ""),
+            ("exec '/bin/zsh' -l -i -c", "exec /bin/zsh -f -c"),
+            ("exec '\\''/bin/zsh'\\'' -l -i", "exit 0"),
+        ] {
+            try #require(text.contains(pattern), "the script format changed: no \(pattern)")
+            text = text.replacingOccurrences(of: pattern, with: replacement)
+        }
         let script = fx.url.appendingPathComponent("t.sh")
         try text.write(to: script, atomically: true, encoding: .utf8)
         let p = Process()

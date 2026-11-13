@@ -81,8 +81,11 @@ import Testing
         let pane = wc.paneGroup.panes[0]
         let cb = columns(pane)
         let before = loads(cb)
+        fx.file("alpha/inner/new.txt")
         pane.reloadForExternalChange()
         #expect(loads(cb) == before.mapValues { $0 + 1 })
+        #expect(pane.currentDirectory.lastPathComponent == "inner", "the chain is kept")
+        #expect(pane.browser.visibleItems.map(\.name).contains("new.txt"))
         wc.env.operations.postChange() // an operation or undo finished
         #expect(loads(cb) == before.mapValues { $0 + 2 })
         wc.env.preferences.showHidden.toggle()
@@ -95,18 +98,6 @@ import Testing
         let before = loads(cb)
         cb.reload(options: ListingOptions(showHidden: true), changedFolders: changed(inner))
         #expect(loads(cb) == before.mapValues { $0 + 1 })
-    }
-
-    @Test func aFolderThatVanishedTakesItsColumnsAway() throws {
-        let wc = window()
-        let pane = wc.paneGroup.panes[0]
-        let cb = columns(pane)
-        try FileManager.default.removeItem(at: inner)
-        wc.foldersChanged(changed(alpha))
-        #expect(cb.columns.last?.directory.lastPathComponent == "alpha")
-        #expect(pane.currentDirectory.lastPathComponent == "alpha")
-        #expect(pane.selectedItems.map(\.name) == ["a.txt"], "the row that took the folder's place")
-        #expect(cb.preview?.items.map(\.name) == ["a.txt"])
     }
 
     func watchedFolders(_ wc: MainWindowController) -> Set<String> {
@@ -131,6 +122,11 @@ import Testing
         wc.foldersChanged(changed(alpha))
 
         #expect(pane.currentDirectory.lastPathComponent == "alpha")
+        // Its columns went with it; the row that took the folder's place is selected.
+        let cb = columns(pane)
+        #expect(cb.columns.last?.directory.lastPathComponent == "alpha")
+        #expect(pane.selectedItems.map(\.name) == ["a.txt"])
+        #expect(cb.preview?.items.map(\.name) == ["a.txt"])
         #expect(pane.history.current.standardizedFileURL.path == alpha.standardizedFileURL.path, "the history is where the pane is")
         #expect(pane.history.backStack.map(\.lastPathComponent) == [inner.lastPathComponent, "beta"],
                 "the deleted folder isn't added to the Back stack")

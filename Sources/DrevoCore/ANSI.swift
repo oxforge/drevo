@@ -133,16 +133,4 @@ public struct ANSIStream: Sendable {
         }
         return ANSI.spans(text, style: &style)
     }
-
-    /// The chunk's visible text alone: every sequence stripped, SGR included.
-    public mutating func strip(_ chunk: String) -> String {
-        guard !pending.isEmpty || ANSI.has(ANSI.escape, in: chunk) else { return ANSI.strip(chunk) }
-        let text = pending + chunk
-        pending = ""
-        guard let cut = ANSI.incompleteTail(of: text),
-              text.utf8.distance(from: cut, to: text.utf8.endIndex) <= Self.maxPending
-        else { return ANSI.strip(text) }
-        pending = String(text[cut...])
-        return ANSI.strip(String(text[..<cut]))
-    }
 }

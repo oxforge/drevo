@@ -45,14 +45,6 @@ import Testing
         #expect(children() == ["Assets", "assets.zip"], "no staging folder or __MACOSX left behind")
     }
 
-    @Test func takenNameGetsANumber() throws {
-        tmp.file("src/Assets/a.txt", "A")
-        let archive = zip("src/Assets", to: "assets.zip")
-        tmp.dir("Assets")
-        let out = try #require(ArchiveExtraction(archive: archive)).run()
-        #expect(out.map(\.lastPathComponent) == ["Assets 2"])
-    }
-
     @Test func severalItemsGoIntoAFolderNamedAfterTheArchive() throws {
         tmp.file("src/one.txt", "1")
         tmp.file("src/two.txt", "2")

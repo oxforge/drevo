@@ -4,16 +4,13 @@ import Foundation
 public enum FuzzyMatch {
     public struct Match: Equatable, Sendable {
         public let score: Int
-        /// Offsets (in Characters) of matched characters, for highlighting.
-        public let positions: [Int]
     }
 
     public static func match(_ query: String, in candidate: String) -> Match? {
         let q = Array(query.lowercased().filter { !$0.isWhitespace })
-        if q.isEmpty { return Match(score: 0, positions: []) }
+        if q.isEmpty { return Match(score: 0) }
         let c = Array(candidate)
         let lower = c.map { Character($0.lowercased()) }
-        var positions: [Int] = []
         var score = 0
         var qi = 0
         var previous = -2
@@ -25,14 +22,13 @@ public enum FuzzyMatch {
             if i == previous + 1 { points += 5 }
             if i == 0 { points += 3 }
             score += points
-            positions.append(i)
             previous = i
             qi += 1
         }
         guard qi == q.count else { return nil }
         // Prefer shorter candidates when scores tie.
         score -= c.count / 8
-        return Match(score: score, positions: positions)
+        return Match(score: score)
     }
 
     /// Candidates that match, best first; ties keep input order.

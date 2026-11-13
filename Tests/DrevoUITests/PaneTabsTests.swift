@@ -78,7 +78,6 @@ import Testing
 
     @Test func controlTabSwitchesTabs() {
         let wc = makeWindow([a, b])
-        NSApp.mainMenu = MainMenu.build(keyMap: wc.env.keyMap)
         let pane = wc.paneGroup.activePane
         wc.perform(.newTab)
         #expect(wc.env.keyMap.command(for: key(KeyCode.tab, "\t", [.control], window: wc.window!)) == .nextTab)

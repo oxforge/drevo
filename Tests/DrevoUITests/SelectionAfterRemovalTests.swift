@@ -11,6 +11,7 @@ import Testing
     let prompts = ScriptedPrompts()
     var left: URL { fx.url.appendingPathComponent("left") }
     var right: URL { fx.url.appendingPathComponent("right") }
+    var trash: URL { fx.url.appendingPathComponent("_trash") }
 
     /// Rows of the left pane: Folder, a.txt, b.txt, c.txt, d.txt.
     init() {
@@ -20,7 +21,7 @@ import Testing
     }
 
     func window(_ mode: ViewMode) -> MainWindowController {
-        let env = testEnvironment(trash: fx.url.appendingPathComponent("_trash"), prompts: prompts)
+        let env = testEnvironment(trash: trash, prompts: prompts)
         env.preferences.confirmTransfers = false
         return makeWindow([left, right], modes: [mode, mode], env: env)
     }
@@ -126,6 +127,8 @@ import Testing
         pane.browser.select([item("b.txt")])
         wc.perform(.moveToTrash)
         #expect(selected(pane) == ["c.txt"])
+        #expect(!FileManager.default.fileExists(atPath: item("b.txt").path))
+        #expect(FileManager.default.fileExists(atPath: trash.appendingPathComponent("b.txt").path), "it went to the test's trash folder")
         pane.browser.select([item("d.txt")])
         wc.perform(.moveToTrash)
         #expect(selected(pane) == ["c.txt"])

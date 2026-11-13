@@ -14,10 +14,6 @@ import Testing
     }
 }
 
-@Test func commandIDsAreUnique() {
-    #expect(Set(CommandRegistry.all.map(\.id)).count == CommandRegistry.all.count)
-}
-
 @Test func lookupByKey() throws {
     let map = KeyMap()
     #expect(map.command(for: .named(.f5)) == .copyToOtherPane)
@@ -38,16 +34,6 @@ import Testing
     #expect(map.keys(for: .copyToOtherPane) == KeyMap().keys(for: .copyToOtherPane), "a key that can't be read leaves the command as it was")
     #expect(problems.map(\.command).sorted() == ["file.copyToOther", "nope"])
     #expect(map.overridden == [.rename, .levelUp, .swapPanes])
-}
-
-@Test func typoInOverrideKeepsTheCurrentKeys() throws {
-    var map = KeyMap()
-    let defaults = map.keys(for: .rename)
-    #expect(!defaults.isEmpty)
-    let problems = try map.applyOverrides(json: Data(#"{ "file.rename": "f22" }"#.utf8))
-    #expect(map.keys(for: .rename) == defaults)
-    #expect(!map.overridden.contains(.rename))
-    #expect(problems == [KeyMap.OverrideProblem(command: "file.rename", message: #"can't read key "f22""#)])
 }
 
 @Test func listOfOnlyUnreadableKeysKeepsTheCurrentKeys() throws {

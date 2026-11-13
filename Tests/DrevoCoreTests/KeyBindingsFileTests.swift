@@ -32,30 +32,6 @@ private func object(_ data: Data) throws -> NSDictionary {
     #expect(written.count == 7)
 }
 
-@Test func removingACommandDropsOnlyItsEntry() throws {
-    var file = try KeyBindingsFile(data: Data(handWritten.utf8))
-    file.remove(.levelUp)
-    let written = try object(file.data)
-    #expect(written["nav.levelUp"] == nil)
-    #expect(written.count == 5)
-}
-
-@Test func removeAllCommandsKeepsOnlyComments() throws {
-    var file = try KeyBindingsFile(data: Data(handWritten.utf8))
-    file.removeAllCommands()
-    let written = try object(file.data)
-    #expect(Set(written.allKeys as! [String]) == ["_comment", "_example_vim_style"])
-}
-
-@Test func unbindingIsWrittenAsAnEmptyList() throws {
-    var file = KeyBindingsFile()
-    file.set([], for: .swapPanes)
-    var map = KeyMap()
-    let problems = try map.applyOverrides(json: file.data)
-    #expect(problems.isEmpty)
-    #expect(map.keys(for: .swapPanes).isEmpty)
-}
-
 @Test func writtenFileReadsBackSortedWithCommentsFirst() throws {
     var file = try KeyBindingsFile(data: Data(#"{ "nav.levelUp": "h", "_comment": "notes" }"#.utf8))
     file.set([.named(.f9), .char("+", .command)], for: .rename)

@@ -75,6 +75,8 @@ import Testing
         var answers = Set<UInt>()
         for (name, urls) in drags {
             let drag = FakeDrag(urls)
+            // What the drag's first validation worked out; every later one must reuse it.
+            var files: DraggedFiles?
             // Twice over the same drag: the second pass is answered from the cache, and
             // the modifier keys change while the drag is under way.
             for pass in 1...2 {
@@ -82,12 +84,15 @@ import Testing
                     drag.mask = mask
                     for drop in drops {
                         let answer = ds.tableView!(table, validateDrop: drag, proposedRow: drop.row, proposedDropOperation: drop.op)
+                        if files == nil { files = FileDragDrop.draggedFiles(drag) }
                         let expected = uncached(urls, mask: mask, onto: drop.dest)
                         #expect(answer == expected, "\(name), mask \(mask.rawValue), row \(drop.row), pass \(pass)")
                         answers.insert(answer.rawValue)
                     }
                 }
             }
+            #expect(files?.urls.count == urls.count, "\(name): every item was read")
+            #expect(FileDragDrop.draggedFiles(drag) === files, "\(name): worked out once for every row, mask and pass")
         }
         // The scenarios really cover refusal, copy and move.
         #expect(answers == [NSDragOperation([]).rawValue, NSDragOperation.copy.rawValue, NSDragOperation.move.rawValue])
@@ -114,21 +119,5 @@ import Testing
         drag.pasteboard.clearContents()
         drag.pasteboard.writeObjects([src.appendingPathComponent("b.txt")] as [NSURL])
         #expect(FileDragDrop.draggedFiles(drag).urls.map(\.lastPathComponent) == ["b.txt"])
-    }
-
-    /// Every move of a big drag over other rows is answered from the first one's work.
-    @Test func aLargeDragIsWorkedOutOnceForAllRows() {
-        for i in 0..<200 { fx.file("src/many/f\(i).txt") }
-        let many = (0..<200).map { src.appendingPathComponent("many/f\($0).txt") }
-        let wc = window()
-        let (table, ds) = dropTarget(wc)
-        let drag = FakeDrag(many)
-        #expect(ds.tableView!(table, validateDrop: drag, proposedRow: -1, proposedDropOperation: .on) == .move)
-        let files = FileDragDrop.draggedFiles(drag)
-        #expect(files.urls.count == 200)
-        for row in [0, 1, -1, 0] {
-            #expect(ds.tableView!(table, validateDrop: drag, proposedRow: row, proposedDropOperation: .on) == .move)
-        }
-        #expect(FileDragDrop.draggedFiles(drag) === files)
     }
 }

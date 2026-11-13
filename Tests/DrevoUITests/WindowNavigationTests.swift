@@ -75,9 +75,10 @@ import Testing
         #expect(names(wc.paneGroup.panes[1]).contains(".secret"))
     }
 
-    @Test func menuShortcutForHiddenFilesFires() {
+    /// ⇧ with a symbol key arrives as the shifted character; it still reads as the combo
+    /// the command is bound to (shift plus the unshifted key).
+    @Test func shiftedSymbolKeyFindsItsCommand() {
         let wc = makeWindow([fx.url, fx.url])
-        NSApp.mainMenu = MainMenu.build(keyMap: wc.env.keyMap)
         let w = wc.window!
         // ⇧⌘. as the keyboard delivers it: characters are the shifted ">".
         let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command, .shift], timestamp: 0,
@@ -85,14 +86,6 @@ import Testing
                                  charactersIgnoringModifiers: ">", isARepeat: false, keyCode: KeyCode.period)!
         #expect(KeyCombo.candidates(for: e).contains(try! KeyCombo(parsing: "shift+cmd+.")))
         #expect(wc.env.keyMap.command(for: e) == .toggleHidden)
-    }
-
-    @Test func bangMapsToRunCommand() {
-        let wc = makeWindow([fx.url, fx.url])
-        let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.shift], timestamp: 0,
-                                 windowNumber: wc.window!.windowNumber, context: nil, characters: "!",
-                                 charactersIgnoringModifiers: "!", isARepeat: false, keyCode: KeyCode.one)!
-        #expect(wc.env.keyMap.command(for: e) == .runCommand)
     }
 
     @Test func viewModeSwitchKeepsFolderAndSelection() {

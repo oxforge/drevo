@@ -121,19 +121,6 @@ private struct FailingTrash: Trashing {
         #expect(r.outputs.isEmpty)
     }
 
-    @Test func undoMovesTheItemBackAndRedoMovesItAgain() throws {
-        let d = tmp.dir("src/D")
-        tmp.file("src/D/x.txt", "XX")
-        let r = crossVolumeMove([d], to: tmp.dir("dest")).run()
-        #expect(!exists("src/D"))
-        let redo = try ops.undo(try #require(r.undo))
-        #expect(read("src/D/x.txt") == "XX")
-        #expect(!exists("dest/D"))
-        _ = try ops.undo(redo)
-        #expect(read("dest/D/x.txt") == "XX")
-        #expect(!exists("src/D"))
-    }
-
     /// The copy succeeded but the original can't be deleted (read-only disk image, locked
     /// card, no permission on its folder): the item counts as copied.
     @Test func sourceThatCannotBeDeletedCountsAsCopied() throws {

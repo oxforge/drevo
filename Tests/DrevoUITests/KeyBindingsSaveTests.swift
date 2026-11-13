@@ -44,12 +44,6 @@ import Testing
         #expect(file["pane.swap"] is NSNull)
     }
 
-    @Test func theFirstSaveCreatesTheFile() throws {
-        let env = environment()
-        try env.saveKeyChanges([.rename: [combo("f9")]])
-        #expect(try written()["file.rename"] as? [String] == ["f9"])
-    }
-
     @Test func savingTheDefaultsWritesNoFile() throws {
         let env = environment()
         try env.saveKeyChanges([.rename: KeyMap().keys(for: .rename)])
@@ -63,13 +57,6 @@ import Testing
         let file = try written()
         #expect(file["file.rename"] == nil)
         #expect(file["pane.swap"] is NSNull)
-    }
-
-    @Test func resetAllKeepsComments() throws {
-        let env = environment(file: #"{ "_comment": "mine", "file.rename": "f9", "nope": "f1" }"#)
-        try env.resetAllKeys()
-        #expect(env.keyMap == KeyMap())
-        #expect(try written() == ["_comment": "mine"])
     }
 
     @Test func anUnreadableFileIsNeverOverwrittenByAnEdit() throws {

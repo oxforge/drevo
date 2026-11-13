@@ -15,19 +15,9 @@ private func refusal(_ outcome: KeyRecording.Outcome) -> String? {
     return nil
 }
 
-@Test func recordingAFreeKeyAddsIt() {
-    let outcome = KeyRecording.record([combo("cmd+e")], for: .rename, slot: .add, in: context())
-    #expect(outcome == .apply([.rename: [combo("f2"), combo("cmd+r"), combo("cmd+e")]], note: nil))
-}
-
 @Test func replacingAKeyKeepsItsPlace() {
     let outcome = KeyRecording.record([combo("cmd+e")], for: .rename, slot: .replace(combo("f2")), in: context())
     #expect(outcome == .apply([.rename: [combo("cmd+e"), combo("cmd+r")]], note: nil))
-}
-
-@Test func macOSShortcutsAreRefused() {
-    let outcome = KeyRecording.record([combo("cmd+space")], for: .rename, slot: .add, in: context())
-    #expect(refusal(outcome)?.contains("macOS") == true)
 }
 
 @Test func theGlobalShortcutIsRefused() {
@@ -133,18 +123,6 @@ private func loaded(_ file: KeyBindingsFile, renames: Bool) throws -> KeyMap {
     var map = renames ? renamesMode() : KeyMap()
     #expect(try map.applyOverrides(json: file.data).isEmpty)
     return map
-}
-
-@Test func returnMoveKeepsReturnBoundWhenRenameWasEdited() throws {
-    var file = KeyBindingsFile()
-    file.set([combo("f2"), combo("cmd+r"), combo("cmd+e")], for: .rename)
-    let before = try loaded(file, renames: false)
-    file.apply(KeyRecording.movingReturn(to: .rename, in: before), defaults: renamesMode())
-    let after = try loaded(file, renames: true)
-    #expect(after.command(for: combo("return")) == .rename)
-    #expect(after.keys(for: .rename) == [combo("return"), combo("f2"), combo("cmd+r"), combo("cmd+e")])
-    #expect(after.keys(for: .open) == [combo("cmd+down")])
-    #expect(after.overridden == [.rename], "Open is back to its default, so it has no entry")
 }
 
 @Test func returnMoveBackKeepsReturnBoundWhenOpenWasEdited() throws {

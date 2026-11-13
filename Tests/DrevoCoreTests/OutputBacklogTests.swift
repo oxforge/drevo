@@ -123,44 +123,71 @@ import Testing
     }
 
     /// Every line in several colours: many short runs instead of one long one. The limit
-    /// and the speed hold all the same.
+    /// holds all the same, and keeping the runs costs about what reading the colours does.
     @Test func aColouredFloodStaysBoundedAndQuick() {
-        let b = OutputBacklog(limit: 400_000)
         let line = "\u{1B}[1;32mok\u{1B}[0m the quick \u{1B}[38;5;208mbrown\u{1B}[0m fox\n"
-        let chunk = String(repeating: line, count: 16_384 / line.utf8.count)
-        let start = Date()
+        let shown = "ok the quick brown fox\n"
+        let lines = 16_384 / line.utf8.count
+        let chunk = String(repeating: line, count: lines)
+        let chunks = 10_000_000 / chunk.utf8.count
+        // The baseline: the same chunks read into spans, with no backlog keeping them.
+        var reader = ANSIStream()
+        var visible = 0
+        var start = Date()
+        for _ in 0..<chunks {
+            for span in reader.spans(chunk) { visible += span.text.utf8.count }
+        }
+        let reading = Date().timeIntervalSince(start)
+        #expect(visible == chunks * lines * shown.utf8.count)
+        let b = OutputBacklog(limit: 400_000)
         var most = 0
-        for _ in 0..<(10_000_000 / chunk.utf8.count) {
+        start = Date()
+        for _ in 0..<chunks {
             b.append(chunk, isError: false)
             most = max(most, b.pendingLength)
         }
-        #expect(Date().timeIntervalSince(start) < 10, "took \(Date().timeIntervalSince(start)) s")
+        let seconds = Date().timeIntervalSince(start)
+        // Keeping the runs costs about as much as reading them: 10× (plus 1 s for a tiny
+        // baseline) leaves room for a busy machine, not for a pass over all held runs per run.
+        #expect(seconds < reading * 10 + 1, "took \(seconds) s; reading the same chunks took \(reading) s")
         #expect(most <= 2 * 400_000 + 16_384)
         let batch = b.take()
         #expect(batch.skipped)
         let text = batch.runs.map(\.text).joined()
         #expect(text.utf16.count <= 400_000 && text.utf16.count > 399_000)
-        #expect(text.hasPrefix("ok the quick brown fox\n") && text.hasSuffix("ok the quick brown fox\n"))
+        #expect(text.hasPrefix(shown) && text.hasSuffix(shown))
         #expect(batch.runs.last == .init(text: " fox\n", isError: false))
         #expect(batch.runs.dropLast().last == .init(text: "brown", isError: false, style: TextStyle(foreground: .rgb(255, 135, 0))))
+    }
+
+    /// Runs a command that prints 50 MB, hands each chunk of it to `handle`, and returns
+    /// the seconds it took.
+    func flood(_ handle: @escaping (String, _ isError: Bool) -> Void) -> Double {
+        let tmp = TempDir()
+        let c = ShellCommand(command: "yes 'the quick brown fox' | head -c 50000000", directory: tmp.url, shell: "/bin/zsh", flags: ["-f"])
+        c.onOutput = handle
+        let start = Date()
+        try! c.start()
+        #expect(c.waitUntilExit(timeout: 60))
+        return Date().timeIntervalSince(start)
     }
 
     /// 50 MB from a real command with nothing taking it: the reader keeps up (a per-chunk
     /// walk through the text once made this take 5 s instead of 0.05 s) and holds no more
     /// than the limit allows.
     @Test func aFloodPassesThroughQuicklyAndStaysBounded() {
-        let tmp = TempDir()
-        let c = ShellCommand(command: "yes 'the quick brown fox' | head -c 50000000", directory: tmp.url, shell: "/bin/zsh", flags: ["-f"])
+        nonisolated(unsafe) var received = 0
+        let reading = flood { text, _ in received += text.utf8.count }
+        #expect(received == 50_000_000)
         let b = OutputBacklog(limit: 400_000)
         nonisolated(unsafe) var most = 0
-        c.onOutput = { text, isError in
+        let seconds = flood { text, isError in
             b.append(text, isError: isError)
             most = max(most, b.pendingLength)
         }
-        let start = Date()
-        try! c.start()
-        #expect(c.waitUntilExit(timeout: 60))
-        #expect(Date().timeIntervalSince(start) < 2.5)
+        // The backlog adds little to reading the output; that walk made it ~100× slower, far
+        // past 10× (room for a busy machine) plus 1 s (for a tiny baseline).
+        #expect(seconds < reading * 10 + 1, "took \(seconds) s; with the output only counted, \(reading) s")
         #expect(most <= 2 * 400_000 + 16_384, "at most twice the limit plus one chunk is ever held")
         let batch = b.take()
         #expect(batch.skipped)

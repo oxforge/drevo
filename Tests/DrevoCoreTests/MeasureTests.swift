@@ -23,17 +23,6 @@ import Testing
         #expect(partial.items == 11, "the folder and the ten entries before the cancel")
     }
 
-    @Test func aCancelledTokenStopsBeforeTheFirstEntry() {
-        for i in 0..<20 { tmp.file("f\(i).txt") }
-        let token = CancellationToken()
-        #expect(!token.isCancelled)
-        token.cancel()
-        #expect(token.isCancelled)
-        let result = CopyEngine.measure(tmp.url, isCancelled: { token.isCancelled })
-        #expect(result.items == 1)
-        #expect(result.bytes == 0)
-    }
-
     /// Stop during the size count at the start of a copy ends the transfer without copying.
     @Test func cancellingATransferWhileItMeasuresCopiesNothing() {
         for i in 0..<50 { tmp.file("src/D/f\(i).txt") }

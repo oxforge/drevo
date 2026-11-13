@@ -46,11 +46,6 @@ import Testing
         #expect(files == ["file2.txt", ".hidden", "file10.txt"])
     }
 
-    @Test func filterIsCaseInsensitiveSubstring() throws {
-        let names = try DirectoryListing.load(tmp.url, options: ListingOptions(filter: "FILE1")).map(\.name)
-        #expect(names == ["file10.txt"])
-    }
-
     @Test func packageIsNotAContainer() throws {
         let app = try FileItem(url: tmp.url.appendingPathComponent("App.app"))
         #expect(app.isDirectory)

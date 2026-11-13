@@ -108,21 +108,4 @@ import Testing
         #expect(throws: (any Error).self) { try ops.duplicate([a]) }
         #expect(!exists("a copy.txt"))
     }
-
-    @Test func partialUndoKeepsWhatWasReversed() throws {
-        let a = tmp.file("src/a.txt", "A")
-        let b = tmp.file("src/b.txt", "B")
-        let (r, _) = run(.move, [a, b], to: tmp.dir("dst"))
-        // Something new now sits where a.txt came from, so its move-back fails.
-        tmp.file("src/a.txt", "squatter")
-        let ops = FileOperations(trash: FolderTrash(folder: trashDir))
-        do {
-            _ = try ops.undo(try #require(r.undo))
-            Issue.record("expected a partial failure")
-        } catch let partial as PartialFailure {
-            #expect(read("src/b.txt") == "B", "b was moved back")
-            guard case .moved(let redo) = partial.undo else { Issue.record("expected .moved redo"); return }
-            #expect(redo.map(\.to.lastPathComponent) == ["b.txt"])
-        }
-    }
 }

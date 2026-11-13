@@ -33,29 +33,19 @@ import Testing
         #expect(pane.selectedItems.map(\.name) == ["inner"])
         press(right, in: w)
         #expect(pane.currentDirectory.lastPathComponent == "inner")
-        let left = key(KeyCode.left, String(UnicodeScalar(NSLeftArrowFunctionKey)!), .function, window: w)
-        press(left, in: w)
-        #expect(pane.currentDirectory.lastPathComponent == "alpha")
-        #expect(pane.selectedItems.map(\.name) == ["inner"])
-        #expect(cb.columns.last?.directory.lastPathComponent == "inner", "the folder's contents stay visible")
-    }
-
-    @Test func leftFromADeeperColumnFocusesItsParent() {
-        let start = fx.url.appendingPathComponent("alpha")
-        let wc = makeWindow([start, start], modes: [.columns, .columns])
-        let pane = wc.paneGroup.activePane
-        let cb = columns(wc)
         // A temp path's chain starts at "/", so the focused column is several levels deep
         // and ← only moves focus one column to the left.
         let depthBefore = cb.columns.count
         let focusBefore = cb.focusedIndex
         #expect(focusBefore > 0)
-        #expect(pane.perform(.levelUp))
+        let left = key(KeyCode.left, String(UnicodeScalar(NSLeftArrowFunctionKey)!), .function, window: w)
+        press(left, in: w)
         #expect(cb.focusedIndex == focusBefore - 1)
-        #expect(pane.currentDirectory.standardizedFileURL.path == fx.url.standardizedFileURL.path)
-        #expect(pane.selectedItems.map(\.name) == ["alpha"])
+        #expect(pane.currentDirectory.lastPathComponent == "alpha")
+        #expect(pane.history.current.standardizedFileURL.path == fx.url.appendingPathComponent("alpha").standardizedFileURL.path)
+        #expect(pane.selectedItems.map(\.name) == ["inner"])
         #expect(cb.columns.count <= depthBefore)
-        #expect(pane.history.current.standardizedFileURL.path == fx.url.standardizedFileURL.path)
+        #expect(cb.columns.last?.directory.lastPathComponent == "inner", "the folder's contents stay visible")
     }
 
     /// ← in the first column shows the folder above it. The pane has to hear about it:
@@ -110,14 +100,5 @@ import Testing
         #expect(preview.items.map(\.name) == ["note.txt"])
         #expect(preview.titleLabel.stringValue == "note.txt")
         #expect(preview.superview != nil, "the preview is on screen")
-    }
-
-    @Test func reloadKeepsChain() {
-        let wc = makeWindow([fx.url.appendingPathComponent("alpha/inner"), fx.url], modes: [.columns, .columns])
-        let pane = wc.paneGroup.activePane
-        fx.file("alpha/inner/new.txt")
-        pane.reload()
-        #expect(pane.currentDirectory.lastPathComponent == "inner")
-        #expect(pane.browser.visibleItems.map(\.name).contains("new.txt"))
     }
 }

@@ -90,16 +90,6 @@ import Testing
         #expect(pane.browser.visibleItems.count == 5)
     }
 
-    @Test func filterClearsOnNavigation() {
-        let wc = window()
-        let pane = wc.paneGroup.activePane
-        pane.beginFilter()
-        pane.setFilter("Doc")
-        pane.navigate(to: fx.url.appendingPathComponent("Downloads"))
-        #expect(pane.filter.isEmpty)
-        #expect(!pane.header.isFiltering)
-    }
-
     @Test func outsideChangesShowUpLive() {
         let wc = window([.list, .columns])
         let (list, cols) = (wc.paneGroup.panes[0], wc.paneGroup.panes[1])

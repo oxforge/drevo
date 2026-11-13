@@ -14,15 +14,6 @@ import Testing
         HotkeySetting(combo: try! KeyCombo(parsing: keys), keyCode: keyCode)
     }
 
-    @Test func offByDefaultAndSavedWhenSet() {
-        let prefs = Preferences.ephemeral()
-        #expect(prefs.globalHotkey == nil)
-        prefs.globalHotkey = setting("ctrl+opt+cmd+d", keyCode: 2)
-        #expect(prefs.globalHotkey == setting("ctrl+opt+cmd+d", keyCode: 2))
-        prefs.globalHotkey = nil
-        #expect(prefs.globalHotkey == nil)
-    }
-
     @Test func carbonModifiersMatchTheCombo() {
         #expect(GlobalHotkey.carbonModifiers([.command, .option]) == UInt32(cmdKey | optionKey))
         #expect(GlobalHotkey.carbonModifiers([.control, .shift]) == UInt32(controlKey | shiftKey))
@@ -31,12 +22,13 @@ import Testing
     @Test func settingsRefuseShortcutsTheRuleRejects() {
         let env = testEnvironment(trash: fx.url.appendingPathComponent("trash"))
         let model = SettingsModel(env: env)
+        #expect(env.preferences.globalHotkey == nil, "off by default")
         #expect(model.setGlobalHotkey(setting("cmd+space", keyCode: 49))?.contains("macOS") == true)
         #expect(env.preferences.globalHotkey == nil)
         // ⌘D is Duplicate inside Drevo.
         #expect(model.setGlobalHotkey(setting("cmd+d", keyCode: 2))?.contains("Duplicate") == true)
         #expect(model.setGlobalHotkey(setting("ctrl+opt+cmd+d", keyCode: 2)) == nil)
-        #expect(env.preferences.globalHotkey?.combo.description == "⌃⌥⌘D")
+        #expect(env.preferences.globalHotkey == setting("ctrl+opt+cmd+d", keyCode: 2), "saved, key code and all")
         model.setGlobalHotkey(nil)
         #expect(env.preferences.globalHotkey == nil)
     }

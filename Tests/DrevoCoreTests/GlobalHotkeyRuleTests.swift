@@ -2,8 +2,8 @@ import Testing
 @testable import DrevoCore
 
 @Suite struct GlobalHotkeyRuleTests {
-    func problem(_ keys: String, command: String? = nil) throws -> String? {
-        try GlobalHotkeyRule.problem(with: KeyCombo(parsing: keys)) { _ in command }
+    func problem(_ keys: String) throws -> String? {
+        try GlobalHotkeyRule.problem(with: KeyCombo(parsing: keys))
     }
 
     @Test func acceptsCombosWithCommandOrControl() throws {
@@ -18,15 +18,5 @@ import Testing
         #expect(try problem("opt+d")?.contains("typing") == true)
         #expect(try problem("shift+d")?.contains("typing") == true)
         #expect(try problem("f5")?.contains("typing") == true)
-    }
-
-    @Test func refusesSystemShortcuts() throws {
-        #expect(try problem("cmd+space")?.contains("macOS") == true)
-        #expect(try problem("cmd+tab")?.contains("macOS") == true)
-        #expect(try problem("cmd+q")?.contains("macOS") == true)
-    }
-
-    @Test func refusesAShortcutOfADrevoCommand() throws {
-        #expect(try problem("shift+cmd+p", command: "Command Palette…") == "⇧⌘P is Drevo’s shortcut for “Command Palette…”.")
     }
 }

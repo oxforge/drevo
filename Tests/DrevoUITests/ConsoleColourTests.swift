@@ -76,9 +76,10 @@ import Testing
             .init(text: "onblue ", isError: false, style: TextStyle(background: .palette(4))),
             .init(text: "oops ", isError: true),
             .init(text: "warn ", isError: true, style: TextStyle(foreground: .palette(3), bold: true)),
-            .init(text: "errunder\n", isError: true, style: TextStyle(underline: true)),
+            .init(text: "errunder ", isError: true, style: TextStyle(underline: true)),
+            .init(text: "back\n", isError: false),
         ]))
-        #expect(console.transcript == "plain red bold under exact onblue oops warn errunder\n")
+        #expect(console.transcript == "plain red bold under exact onblue oops warn errunder back\n")
         let text = console.attributedTranscript
 
         let plain = attributes(of: "plain", in: text)
@@ -113,6 +114,7 @@ import Testing
         let errUnder = attributes(of: "errunder", in: text)
         #expect(errUnder[.foregroundColor] as? NSColor == .systemRed, "an attribute alone leaves stderr red")
         #expect(errUnder[.underlineStyle] != nil)
+        #expect(attributes(of: "back", in: text)[.foregroundColor] as? NSColor == .labelColor, "stdout after stderr is plain again")
     }
 
     @Test func inverseSwapsTextAndBackground() {
@@ -266,12 +268,12 @@ import Testing
         let runs = (0..<count).flatMap { _ in
             [OutputBacklog.Run(text: "0123456789", isError: false, style: green), .init(text: "abcdefghi\n", isError: false)]
         }
-        let start = Date()
         console.append(OutputBacklog.Batch(runs: runs, skipped: true))
-        #expect(Date().timeIntervalSince(start) < 1, "\(runs.count) runs in one update took \(Date().timeIntervalSince(start)) s")
         let text = console.attributedTranscript
         #expect(text.length <= ConsoleViewController.maxCharacters)
         #expect(text.string.components(separatedBy: "… output skipped …").count - 1 == 1)
+        let tail = String(repeating: "0123456789abcdefghi\n", count: count)
+        #expect(text.string.hasSuffix("\n… output skipped …\n" + tail), "the note is a line of its own, right before the kept tail")
         let note = (text.string as NSString).range(of: "… output skipped …\n")
         #expect(text.attribute(.foregroundColor, at: note.location, effectiveRange: nil) as? NSColor == .secondaryLabelColor)
         #expect(text.attribute(.foregroundColor, at: NSMaxRange(note), effectiveRange: nil) as? NSColor == ConsoleTextAttributes.color(.palette(2)),

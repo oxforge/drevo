@@ -33,24 +33,18 @@ import Testing
         let cb = columns(wc)
         cb.select([url("a.zip")])
         #expect(cb.preview?.items.count == 1)
-        cb.select([url("a.zip"), url("b.jpeg")])
-        let preview = try #require(cb.preview, "the preview stays when a second file is selected")
-        #expect(preview.titleLabel.stringValue == "2 items")
-        #expect(preview.subtitleLabel.stringValue == "2 files")
-        #expect(preview.sizeLabel.stringValue == Formatting.size(1500))
-    }
-
-    @Test func extendingTheSelectionDoesNotMoveTheColumns() throws {
-        let wc = makeWindow([fx.url, fx.url], modes: [.columns, .columns])
-        let cb = columns(wc)
-        cb.select([url("a.zip")])
         cb.view.layoutSubtreeIfNeeded()
         let scroll = try #require(cb.view as? NSScrollView)
         let before = (scroll.contentView.bounds.origin, scroll.documentView?.frame.width)
         cb.select([url("a.zip"), url("b.jpeg")])
         cb.view.layoutSubtreeIfNeeded()
+        // Extending the selection keeps the columns where they were.
         #expect(scroll.contentView.bounds.origin == before.0)
         #expect(scroll.documentView?.frame.width == before.1)
+        let preview = try #require(cb.preview, "the preview stays when a second file is selected")
+        #expect(preview.titleLabel.stringValue == "2 items")
+        #expect(preview.subtitleLabel.stringValue == "2 files")
+        #expect(preview.sizeLabel.stringValue == Formatting.size(1500))
     }
 
     @Test func foldersAreMeasuredInTheBackground() throws {
@@ -158,14 +152,6 @@ import Testing
         #expect(!panel.measurement.isCancelled)
         panel.window?.close()
         #expect(panel.measurement.isCancelled)
-    }
-
-    @Test func singleFolderStillOpensItsColumn() {
-        let wc = makeWindow([fx.url, fx.url], modes: [.columns, .columns])
-        let cb = columns(wc)
-        cb.select([url("Folder")])
-        #expect(cb.preview == nil)
-        #expect(cb.columns.last?.directory.lastPathComponent == "Folder")
     }
 
     @Test func summaryText() {

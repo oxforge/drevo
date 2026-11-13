@@ -43,16 +43,6 @@ import Testing
         #expect(PathCompletion.candidates(for: "~", relativeTo: base, home: tmp.url.path) == c)
     }
 
-    @Test func bareTildeWithOneFolderCompletesToIt() {
-        let home = TempDir()
-        home.dir("only")
-        let c = PathCompletion.candidates(for: "~", home: home.url.path)
-        #expect(c == ["~/only/"])
-        #expect(PathCompletion.complete("~", candidates: c) == "~/only/")
-        let expanded = PathCompletion.expand(c.first ?? "", relativeTo: URL(fileURLWithPath: "/base"), home: home.url.path)
-        #expect(expanded == home.url.path + "/only/")
-    }
-
     @Test func spacesAroundTheInputAreIgnored() {
         let home = tmp.url.path
         #expect(PathCompletion.candidates(for: "~/do ", home: home) == ["~/Documents/", "~/Downloads/"])

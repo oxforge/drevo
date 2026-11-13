@@ -101,10 +101,6 @@ import Testing
         done = stopped.wait(timeout: .now() + 0.25) == .success
     }
     #expect(done, "the handler never ran")
-    // Later changes find no watcher.
-    tmp.file("watched/after.txt")
-    usleep(100_000)
-    #expect(box.watcher == nil)
 }
 
 private final class WatcherBox: @unchecked Sendable {

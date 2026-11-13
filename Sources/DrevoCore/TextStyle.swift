@@ -51,21 +51,11 @@ public struct TextStyle: Hashable, Sendable {
 
     public static let plain = TextStyle()
 
-    public var isPlain: Bool { self == .plain }
-
     /// Applies the parameters of one SGR sequence: the bytes between `ESC [` and `m`,
-    /// digits separated by `;` (and `:` inside one parameter). Parameters that are not
-    /// rendered (blink, strike-through, …) are skipped.
-    public mutating func apply<Bytes: Sequence>(sgr bytes: Bytes) where Bytes.Element == UInt8 {
-        let bytes = Array(bytes)
-        guard bytes.allSatisfy({ (UInt8(ascii: "0")...UInt8(ascii: ";")).contains($0) }) else {
-            return // not an SGR sequence after all
-        }
-        bytes.withUnsafeBufferPointer { apply(sgr: $0) }
-    }
-
-    /// The same for bytes already known to be digits, `;` and `:`. Not generic and
-    /// without a copy: this runs for every sequence in the output.
+    /// digits separated by `;` (and `:` inside one parameter); the caller has checked
+    /// that there is nothing else. Parameters that are not rendered (blink,
+    /// strike-through, …) are skipped. Not generic and without a copy: this runs for
+    /// every sequence in the output.
     mutating func apply(sgr bytes: UnsafeBufferPointer<UInt8>) {
         var parameters = Parameters(bytes: bytes)
         while let code = parameters.next() {

@@ -52,12 +52,6 @@ import Testing
         #expect(pane.selectedItems.map(\.name) == ["beta.txt"])
     }
 
-    @Test func filterIsCaseInsensitive() {
-        let wc = makeWindow([fx.url, fx.url])
-        type("pic", in: wc.window!)
-        #expect(names(wc.paneGroup.activePane) == ["Pic.PNG"])
-    }
-
     @Test func backspaceRemovesTheLastCharacterAndTheFilterWhenEmpty() {
         let wc = makeWindow([fx.url, fx.url])
         let w = wc.window!
@@ -74,24 +68,17 @@ import Testing
         #expect(pane.browser.visibleItems.count == 7)
     }
 
-    @Test func escClearsTheTypedFilter() {
-        let wc = makeWindow([fx.url, fx.url])
-        let w = wc.window!
-        let pane = wc.paneGroup.activePane
-        type("beta", in: w)
-        esc(w)
-        #expect(pane.filter.isEmpty)
-        #expect(!pane.header.isFiltering)
-        #expect(pane.browser.visibleItems.count == 7)
-    }
-
     @Test func wildcardsMatchTheWholeName() {
         let wc = makeWindow([fx.url, fx.url])
         let w = wc.window!
         let pane = wc.paneGroup.activePane
         type("*.png", in: w)
         #expect(names(pane) == ["shot.png", "Pic.PNG"])
+        // Esc clears the typed filter and shows every row again.
         esc(w)
+        #expect(pane.filter.isEmpty)
+        #expect(!pane.header.isFiltering)
+        #expect(pane.browser.visibleItems.count == 7)
         type("?eta*", in: w)
         #expect(names(pane) == ["beta.txt"])
     }

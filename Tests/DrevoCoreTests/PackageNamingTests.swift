@@ -48,11 +48,6 @@ import Testing
         #expect(fm.fileExists(atPath: tmp.url.appendingPathComponent("Foo copy.app/Contents/Info.plist").path))
     }
 
-    @Test func copyIntoTheSameFolderKeepsThePackageExtensionLast() {
-        let r = transfer([tmp.dir("Foo.app"), tmp.dir("v1.2")], to: tmp.url, decide: .stop)
-        #expect(r.outputs.map(\.lastPathComponent) == ["Foo copy.app", "v1.2 copy"])
-    }
-
     @Test func keepBothKeepsThePackageExtensionLast() {
         let sources = [tmp.dir("src/Foo.app"), tmp.dir("src/Notes.rtfd"), tmp.dir("src/v1.2")]
         tmp.dir("dest/Foo.app")
@@ -127,15 +122,6 @@ import Testing
         let copy = tmp.file("a copy.txt", "2")
         let (made, _) = try ops.duplicate([a, copy, a])
         #expect(made.map(\.lastPathComponent) == ["a copy 2.txt", "a copy 3.txt", "a copy 4.txt"])
-    }
-
-    @Test func copyingManyFilesIntoTheirOwnFolderGivesEachItsOwnName() {
-        let count = 300
-        let sources = (0..<count).map { tmp.file("f\($0).txt", "\($0)") }
-        let t = Transfer(kind: .copy, sources: sources + [sources[0]], destination: tmp.url)
-        let r = t.run()
-        #expect(r.errors == [])
-        #expect(r.outputs.map(\.lastPathComponent) == (0..<count).map { "f\($0) copy.txt" } + ["f0 copy 2.txt"])
     }
 
     @Test func keepBothForManyFilesGivesEachItsOwnName() {

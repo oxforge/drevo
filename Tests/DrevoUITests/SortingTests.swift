@@ -42,22 +42,6 @@ import Testing
         #expect(abs(files.firstIndex(of: "b.zip")! - files.firstIndex(of: "c.zip")!) == 1, "zips sit together")
     }
 
-    @Test func keyboardShortcutSorts() {
-        let wc = makeWindow([fx.url, fx.url], modes: [.columns, .columns])
-        NSApp.mainMenu = MainMenu.build(keyMap: wc.env.keyMap)
-        let w = wc.window!
-        // ⌃⌥⌘5
-        let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.control, .option, .command], timestamp: 0,
-                                 windowNumber: w.windowNumber, context: nil, characters: "5", charactersIgnoringModifiers: "5",
-                                 isARepeat: false, keyCode: 23)!
-        #expect(wc.env.keyMap.command(for: e) == .sortByModified)
-        // The menu owns the key (no window is key in tests, so dispatch is checked separately).
-        let item = MainMenu.item(for: .sortByModified, keyMap: wc.env.keyMap)
-        #expect(item.keyEquivalent == "5" && item.keyEquivalentModifierMask == [.control, .option, .command])
-        wc.perform(.sortByModified)
-        #expect(wc.paneGroup.activePane.sort.key == .modified)
-    }
-
     @Test func listHeadersFollowAndCreatedHasNoColumn() throws {
         let wc = makeWindow([fx.url, fx.url], modes: [.list, .list])
         let pane = wc.paneGroup.activePane

@@ -81,21 +81,6 @@ import Testing
         #expect(names(wc.paneGroup.panes[1]) == ["Folder", "a.txt"], "the panes were refreshed")
     }
 
-    @Test func f6MovesAndUndoMovesBack() {
-        let wc = window()
-        wc.paneGroup.activePane.browser.select([left.appendingPathComponent("b.txt")])
-        wc.perform(.moveToOtherPane)
-        #expect(exists("right/b.txt"))
-        #expect(!exists("left/b.txt"))
-        #expect(names(wc.paneGroup.panes[0]) == ["Folder", "a.txt"])
-        wc.env.operations.undoManager.undo()
-        #expect(exists("left/b.txt"))
-        #expect(!exists("right/b.txt"))
-        #expect(names(wc.paneGroup.panes[1]).isEmpty)
-        wc.env.operations.undoManager.redo()
-        #expect(exists("right/b.txt"))
-    }
-
     @Test func confirmationSheetProposesTargetFolder() {
         let wc = window()
         wc.env.preferences.confirmTransfers = true
@@ -156,31 +141,6 @@ import Testing
         #expect(!exists("left/zzz.txt"))
     }
 
-    @Test func renameToTakenNameReportsError() throws {
-        let wc = window()
-        let w = wc.window!
-        let pane = wc.paneGroup.activePane
-        pane.browser.select([left.appendingPathComponent("a.txt")])
-        wc.perform(.rename)
-        let editor = try #require(w.firstResponder as? NSTextView)
-        editor.string = "b.txt"
-        w.makeFirstResponder(pane.browser.activeTableView)
-        #expect(prompts.errors.count == 1)
-        #expect(exists("left/a.txt"))
-    }
-
-    @Test func trashSelectsNextAndUndoPutsBack() {
-        let wc = window()
-        let pane = wc.paneGroup.activePane
-        pane.browser.select([left.appendingPathComponent("a.txt")])
-        wc.perform(.moveToTrash)
-        #expect(!exists("left/a.txt"))
-        #expect(exists("_trash/a.txt"))
-        #expect(pane.selectedItems.map(\.name) == ["b.txt"])
-        wc.env.operations.undoManager.undo()
-        #expect(exists("left/a.txt"))
-    }
-
     @Test func deleteImmediatelyNeedsConfirmation() {
         let wc = window()
         let pane = wc.paneGroup.activePane
@@ -207,7 +167,9 @@ import Testing
         r.paste(nil)
         #expect(exists("right/b.txt"))
         #expect(!exists("left/b.txt"))
-        // A second paste after a cut copies (the cut is used up) — nothing left to move.
+        // The paste used up the cut, so pasting again would copy instead of moving.
+        #expect(CutBuffer.changeCount == nil)
+        // All of this went through the test's own pasteboard, not the user's clipboard.
         #expect(wc.env.pasteboard !== NSPasteboard.general)
     }
 

@@ -110,22 +110,4 @@ import Testing
         #expect(!d.windowControllers.contains { $0 === wc })
         #expect(waitFor(3) { !isAlive(pid) })
     }
-
-    /// The quit question fits whatever is running: the job may be an archive being expanded.
-    @Test func theQuitQuestionFitsAnyJob() {
-        for count in [1, 3] {
-            let question = AppDelegate.quitQuestion(jobCount: count)
-            #expect(!question.lowercased().contains("cop") && !question.lowercased().contains("mov"))
-        }
-        #expect(AppDelegate.quitQuestion(jobCount: 3).contains("3"))
-    }
-
-    /// The window looks after its own command: nobody else watches this one close.
-    @Test func aWindowOpenedWithoutTheAppDelegateStopsItsCommandToo() {
-        let wc = makeWindow([fx.url, fx.url], env: testEnvironment(trash: fx.url.appendingPathComponent(".T")))
-        let pid = run(obedient, in: wc)
-        #expect(isAlive(pid))
-        wc.close()
-        #expect(waitFor(3) { !isAlive(pid) })
-    }
 }

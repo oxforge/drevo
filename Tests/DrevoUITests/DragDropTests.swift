@@ -75,15 +75,6 @@ final class FakeDrag: NSObject, @preconcurrency NSDraggingInfo {
         #expect(FileManager.default.fileExists(atPath: fx.url.appendingPathComponent("src/a.txt").path))
     }
 
-    @Test func refusesDropIntoItselfAndSameFolderMove() {
-        let wc = makeWindow([fx.url, fx.url.appendingPathComponent("dst")])
-        let (table, ds) = dropTarget(wc)
-        let intoItself = FakeDrag([fx.url.appendingPathComponent("dst")])
-        #expect(ds.tableView!(table, validateDrop: intoItself, proposedRow: 0, proposedDropOperation: .on) == [])
-        let sameFolder = FakeDrag([fx.url.appendingPathComponent("dst/Inner")])
-        #expect(ds.tableView!(table, validateDrop: sameFolder, proposedRow: -1, proposedDropOperation: .on) == [])
-    }
-
     /// The dragged item is named through a symlink to the folder it is dropped on.
     @Test func refusesSameFolderMoveThroughASymlink() {
         let link = fx.url.appendingPathComponent("link")

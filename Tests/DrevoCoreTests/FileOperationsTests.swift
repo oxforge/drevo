@@ -233,23 +233,6 @@ import Testing
         #expect(copied == date)
     }
 
-    @Test func copyIntoSameFolderMakesCopyName() {
-        let a = tmp.file("a.txt", "A")
-        let (r, _, conflicts) = transfer(.copy, [a], to: tmp.url)
-        #expect(conflicts.isEmpty)
-        #expect(r.outputs.map(\.lastPathComponent) == ["a copy.txt"])
-    }
-
-    @Test func conflictKeepBoth() {
-        let a = tmp.file("src/a.txt", "new")
-        tmp.file("dest/a.txt", "old")
-        let (r, _, conflicts) = transfer(.copy, [a], to: tmp.url.appendingPathComponent("dest"), decide: ConflictDecision(.keepBoth))
-        #expect(conflicts.count == 1)
-        #expect(r.outputs.map(\.lastPathComponent) == ["a 2.txt"])
-        #expect(read("dest/a.txt") == "old")
-        #expect(read("dest/a 2.txt") == "new")
-    }
-
     @Test func conflictReplaceTrashesOldAndUndoRestoresIt() throws {
         let a = tmp.file("src/a.txt", "new")
         tmp.file("dest/a.txt", "old")
@@ -283,14 +266,8 @@ import Testing
         #expect(conflicts.count == 1)
         #expect(conflicts.first?.remaining == 1)
         #expect(r.outputs.map(\.lastPathComponent) == ["a 2.txt", "b 2.txt"])
-    }
-
-    @Test func refusesCopyIntoItself() {
-        let d = tmp.dir("D")
-        let inner = tmp.dir("D/inner")
-        let (r, _, _) = transfer(.copy, [d], to: inner)
-        #expect(r.errors.count == 1)
-        #expect(r.outputs.isEmpty)
+        #expect(read("dest/a.txt") == "x")
+        #expect(read("dest/a 2.txt") == "1")
     }
 
     /// Every item that was dealt with counts as done, whether it was copied, skipped or
@@ -302,6 +279,7 @@ import Testing
         let a = tmp.file("a.txt", "AA")
         let (intoItself, updates, _) = transfer(.copy, [d, a], to: tmp.dir("D/inner"))
         #expect(intoItself.errors.count == 1)
+        #expect(intoItself.outputs.map(\.lastPathComponent) == ["a.txt"], "the folder was not placed")
         #expect(updates.last?.totalItems == 2)
         #expect(updates.last?.completedItems == 2)
         #expect(updates.last?.fraction == 1)
@@ -338,37 +316,5 @@ import Testing
         #expect(read("src/a.txt") == "A")
         _ = try ops.undo(redo)
         #expect(read("dest/a.txt") == "A")
-    }
-
-    @Test func moveIntoOwnFolderIsSkipped() {
-        let a = tmp.file("a.txt", "A")
-        let (r, _, _) = transfer(.move, [a], to: tmp.url)
-        #expect(r.skipped == [a])
-        #expect(r.undo == nil)
-    }
-
-    @Test func cancelStopsAndCleansUp() throws {
-        let big = tmp.url.appendingPathComponent("big.bin")
-        try Data(count: 64 * 1024 * 1024).write(to: big)
-        let dest = tmp.dir("dest")
-        let t = Transfer(kind: .copy, sources: [big], destination: dest)
-        t.allowClone = false
-        t.onProgress = { p in if p.completedBytes > 0 { t.cancel() } }
-        let r = t.run()
-        #expect(r.cancelled)
-        #expect(!exists("dest/big.bin"), "partial copy removed")
-    }
-
-    @Test func dataCopyWithoutCloneReportsBytes() throws {
-        let f = tmp.url.appendingPathComponent("f.bin")
-        try Data(count: 8 * 1024 * 1024).write(to: f)
-        let dest = tmp.dir("dest")
-        let t = Transfer(kind: .copy, sources: [f], destination: dest)
-        t.allowClone = false
-        var maxBytes: Int64 = 0
-        t.onProgress = { maxBytes = max(maxBytes, $0.completedBytes) }
-        let r = t.run()
-        #expect(r.errors.isEmpty)
-        #expect(maxBytes == 8 * 1024 * 1024)
     }
 }

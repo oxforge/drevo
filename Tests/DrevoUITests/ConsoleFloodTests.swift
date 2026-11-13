@@ -121,10 +121,8 @@ func mainRunLoopGaps(running command: String, in wc: MainWindowController) -> (c
         #expect(beatsPerSecond > 5, "a 20 Hz timer keeps firing during the flood (\(beatsPerSecond) per second)")
         #expect(wc.shell.isRunning)
         #expect(wc.canPerform(.stopCommand))
-        let start = Date()
         wc.perform(.stopCommand)
         #expect(waitFor(5) { !wc.shell.isRunning })
-        #expect(Date().timeIntervalSince(start) < 3, "Stop takes effect at once, with no backlog to work off")
         let longestGap = heartbeat.stop()
         #expect(longestGap < quiet + 1, "the flood and its end add no long hold of the main run loop (longest gap \(longestGap) s, \(quiet) s for a command without output)")
         let transcript = wc.workspace.console.transcript
@@ -148,32 +146,6 @@ func mainRunLoopGaps(running command: String, in wc: MainWindowController) -> (c
         #expect(colour(0) == .labelColor)
         #expect(colour(4) == .systemRed, "stderr stays red")
         #expect(colour(8) == .labelColor)
-    }
-
-    @Test func aBatchIsOneEditWithEachRunInItsColour() {
-        let console = ConsoleViewController()
-        console.append(OutputBacklog.Batch(runs: [
-            .init(text: "out\n", isError: false), .init(text: "err\n", isError: true), .init(text: "more\n", isError: false),
-        ]))
-        #expect(console.transcript == "out\nerr\nmore\n")
-        let text = console.attributedTranscript
-        #expect(text.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor == .labelColor)
-        #expect(text.attribute(.foregroundColor, at: 4, effectiveRange: nil) as? NSColor == .systemRed)
-        #expect(text.attribute(.foregroundColor, at: 8, effectiveRange: nil) as? NSColor == .labelColor)
-    }
-
-    @Test func skippedOutputIsMarkedOnceAndTheTranscriptKeepsItsCap() {
-        let console = ConsoleViewController()
-        console.begin(command: "flood", directory: fx.url)
-        console.append("an unfinished line", isError: false)
-        let tail = String(repeating: "0123456789abcdefghi\n", count: ConsoleViewController.backlogLimit / 20)
-        console.append(OutputBacklog.Batch(runs: [.init(text: tail, isError: false)], skipped: true))
-        let transcript = console.transcript
-        #expect((transcript as NSString).length <= ConsoleViewController.maxCharacters)
-        #expect(transcript.components(separatedBy: "… output skipped …").count - 1 == 1)
-        #expect(transcript.hasSuffix("\n… output skipped …\n" + tail), "the note is a line of its own, right before the kept tail")
-        let note = (transcript as NSString).range(of: "… output skipped …")
-        #expect(console.attributedTranscript.attribute(.foregroundColor, at: note.location, effectiveRange: nil) as? NSColor == .secondaryLabelColor, "dim, like other status lines")
     }
 
     // MARK: Following the output

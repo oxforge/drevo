@@ -22,15 +22,6 @@ import Testing
         #expect(wc.paneGroup.activeIndex == 1)
     }
 
-    @Test func hintsFollowRebinding() throws {
-        let env = testEnvironment(trash: fx.url.appendingPathComponent(".T"))
-        let wc = makeWindow([fx.url, fx.url], env: env)
-        var map = env.keyMap
-        try map.applyOverrides(json: Data(#"{ "file.copyToOther": "cmd+k" }"#.utf8))
-        wc.keyHints.reload(keyMap: map)
-        #expect(KeyHintBar.displayKey(.copyToOtherPane, keyMap: map) == "⌘K")
-    }
-
     /// The sort button's tooltip names the keys as they are bound now, not the defaults.
     @Test func sortTooltipFollowsRebinding() throws {
         #expect(SortButton.toolTip(keyMap: KeyMap()) == "Sort order (⌃⌥⌘1 Name, ⌃⌥⌘2 Kind, ⌃⌥⌘5 Date Modified, ⌃⌥⌘6 Size)")
@@ -59,6 +50,11 @@ import Testing
         let wc = makeWindow([fx.url, fx.url])
         wc.perform(.commandPalette)
         let palette = try #require(CommandPalette.current)
+        palette.update(query: "stop running")
+        #expect(palette.results.first?.id == .stopCommand)
+        palette.runSelected()
+        #expect(CommandPalette.current != nil, "nothing is running, so Stop is disabled and the palette stays")
+
         palette.update(query: "swap")
         #expect(palette.results.first?.id == .swapPanes)
         palette.update(query: "hidden")
@@ -67,17 +63,6 @@ import Testing
         palette.runSelected()
         #expect(wc.env.preferences.showHidden != before)
         #expect(CommandPalette.current == nil)
-    }
-
-    @Test func paletteDoesNotRunDisabledCommands() throws {
-        let wc = makeWindow([fx.url, fx.url])
-        wc.perform(.commandPalette)
-        let palette = try #require(CommandPalette.current)
-        palette.update(query: "stop running")
-        #expect(palette.results.first?.id == .stopCommand)
-        palette.runSelected()
-        #expect(CommandPalette.current != nil, "nothing is running, so Stop is disabled and the palette stays")
-        palette.close()
     }
 
     @Test func shortcutsCheatSheetListsEverything() {

@@ -188,16 +188,4 @@ import Testing
         #expect(!ops.undoManager.canUndo)
         #expect(exists("right/a.txt"))
     }
-
-    /// The same, run inline: the redo is never registered in the first place.
-    @Test func anInlineUndoThatFailsEntirelyLeavesNoRedo() {
-        let wc = window()
-        let ops = wc.env.operations
-        wc.paneGroup.activePane.browser.select([left.appendingPathComponent("a.txt")])
-        wc.perform(.moveToOtherPane)
-        fx.file("left/a.txt", "squatter")
-        ops.undoManager.undo()
-        #expect(prompts.errors.count == 1)
-        #expect(!ops.undoManager.canRedo)
-    }
 }

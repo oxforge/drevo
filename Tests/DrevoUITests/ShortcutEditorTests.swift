@@ -83,7 +83,7 @@ import Testing
     }
 
     @Test func resetAllAsksFirst() throws {
-        let model = editor(file: #"{ "_comment": "mine", "file.rename": "f9" }"#)
+        let model = editor(file: #"{ "_comment": "mine", "file.rename": "f9", "nope": "f1" }"#)
         prompts.confirmAnswer = false
         model.resetAll()
         #expect(prompts.confirmations.count == 1)
@@ -91,7 +91,8 @@ import Testing
         prompts.confirmAnswer = true
         model.resetAll()
         #expect(model.keys(for: .rename) == KeyMap().keys(for: .rename))
-        #expect(try written() == ["_comment": "mine"])
+        #expect(model.env.keyMap == KeyMap())
+        #expect(try written() == ["_comment": "mine"], "comments stay; entries for unknown commands go too")
     }
 
     @Test func anUnreadableFileDisablesEditing() throws {

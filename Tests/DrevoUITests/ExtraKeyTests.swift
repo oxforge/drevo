@@ -67,6 +67,12 @@ import Testing
     @Test func escWithModifiersReachesTheKeyMapWhileFiltering() throws {
         let wc = try window(extra: [.swapPanes: ["cmd+u", "opt+escape"]])
         let first = wc.paneGroup.panes[0]
+        // A bare Esc still only clears the filter.
+        first.typeIntoFilter("o")
+        press(key(Code.escape, "\u{1b}", [], window: wc.window!), in: wc.window!)
+        #expect(first.filter.isEmpty)
+        #expect(first.currentDirectory.lastPathComponent != "beta")
+
         first.typeIntoFilter("o")
         #expect(first.filter == "o")
         press(key(Code.escape, "\u{1b}", .option, window: wc.window!), in: wc.window!)
@@ -87,14 +93,5 @@ import Testing
         first.browser.select([one])
         press(key(51, "\u{7f}", [], window: wc.window!), in: wc.window!)
         #expect(!FileManager.default.fileExists(atPath: one.path))
-    }
-
-    @Test func bareEscStillClearsTheFilter() throws {
-        let wc = try window(extra: [.swapPanes: ["cmd+u", "opt+escape"]])
-        let first = wc.paneGroup.panes[0]
-        first.typeIntoFilter("o")
-        press(key(Code.escape, "\u{1b}", [], window: wc.window!), in: wc.window!)
-        #expect(first.filter.isEmpty)
-        #expect(first.currentDirectory.lastPathComponent != "beta")
     }
 }

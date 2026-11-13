@@ -45,7 +45,6 @@ final class RecordingOpener: FileOpening {
 final class ScriptedPrompts: UserPrompts {
     var deleteAnswer = true
     var destination: URL??  // nil = accept proposed; .some(nil) = cancel
-    nonisolated(unsafe) var conflictAnswer = ConflictDecision(.keepBoth)
     nonisolated(unsafe) var conflicts: [Conflict] = []
     var errors: [String] = []
     var askedDestination: URL?
@@ -63,7 +62,7 @@ final class ScriptedPrompts: UserPrompts {
     }
     nonisolated func resolveConflict(_ conflict: Conflict, in window: NSWindow?) -> ConflictDecision {
         conflicts.append(conflict)
-        return conflictAnswer
+        return ConflictDecision(.keepBoth)
     }
     func showError(_ message: String, detail: String?, in window: NSWindow?) { errors.append(message + " " + (detail ?? "")) }
     var confirmAnswer = true
@@ -88,7 +87,7 @@ func scratchShellEnvironment(zdotdir: URL) -> [String: String] {
     return env
 }
 
-/// An environment that never touches the real Trash, clipboard or apps.
+/// An environment that never touches the real Trash, clipboard, apps or caches.
 @MainActor
 func testEnvironment(trash: URL, prompts: ScriptedPrompts? = nil, opener: RecordingOpener? = nil) -> AppEnvironment {
     let prompts = prompts ?? ScriptedPrompts()
@@ -105,12 +104,27 @@ func testEnvironment(trash: URL, prompts: ScriptedPrompts? = nil, opener: Record
     env.spotlight = nil
     env.runSearchesSynchronously = true
     env.pasteboard = NSPasteboard(name: NSPasteboard.Name("drevo.tests.\(UUID().uuidString)"))
+    // Run in Terminal's scripts, created on first use; never the user's Caches folder.
+    env.terminalScriptsFolder = trash.deletingLastPathComponent().appendingPathComponent("commands-\(UUID().uuidString)")
     return env
+}
+
+/// Holds the scratch folders (trash, shell config) of windows made without an environment:
+/// one folder per test run, removed when the run ends instead of left behind in $TMPDIR.
+private let envlessWindowScratch: URL = {
+    let url = envlessWindowScratchURL()
+    try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    atexit { _ = try? FileManager.default.removeItem(at: envlessWindowScratchURL()) }
+    return url
+}()
+
+private func envlessWindowScratchURL() -> URL {
+    FileManager.default.temporaryDirectory.appendingPathComponent("drevo-ui-windows-\(getpid())", isDirectory: true)
 }
 
 @MainActor
 func makeWindow(_ dirs: [URL], modes: [ViewMode] = [.list, .list], env: AppEnvironment? = nil) -> MainWindowController {
-    let env = env ?? testEnvironment(trash: FileManager.default.temporaryDirectory.appendingPathComponent("drevo-trash-\(UUID().uuidString)"))
+    let env = env ?? testEnvironment(trash: envlessWindowScratch.appendingPathComponent("drevo-trash-\(UUID().uuidString)"))
     let wc = MainWindowController(env: env, directories: dirs, viewModes: modes, autosave: false)
     wc.window!.layoutIfNeeded()
     wc.paneGroup.activePane.focus()
@@ -127,7 +141,7 @@ func key(_ keyCode: UInt16, _ chars: String = "", _ flags: NSEvent.ModifierFlags
 
 enum KeyCode {
     static let tab: UInt16 = 48, returnKey: UInt16 = 36, left: UInt16 = 123, right: UInt16 = 124
-    static let down: UInt16 = 125, up: UInt16 = 126, one: UInt16 = 18, period: UInt16 = 47, f5: UInt16 = 96
+    static let down: UInt16 = 125, one: UInt16 = 18, period: UInt16 = 47, f5: UInt16 = 96
 }
 
 /// Sends a key to whatever has focus in the window, like a real key press would.

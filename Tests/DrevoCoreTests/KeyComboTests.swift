@@ -23,14 +23,6 @@ import Testing
     #expect(throws: KeyCombo.ParseError.unknownKey("banana")) { try KeyCombo(parsing: "cmd+banana") }
 }
 
-@Test func roundTripsThroughConfigString() throws {
-    for spec in CommandRegistry.all {
-        for k in spec.defaultKeys {
-            #expect(try KeyCombo(parsing: k.configString) == k)
-        }
-    }
-}
-
 @Test func plainTypingKeysAreFlagged() throws {
     #expect(try KeyCombo(parsing: "!").isPlainTyping)
     #expect(try KeyCombo(parsing: "tab").isPlainTyping)

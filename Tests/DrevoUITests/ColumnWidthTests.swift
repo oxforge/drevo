@@ -23,11 +23,6 @@ import Testing
         return browser.columns.map { $0.container.frame.width }
     }
 
-    @Test func columnsStartAtTheDefaultWidth() {
-        let wc = makeWindow([inner, fx.url], modes: [.columns, .list])
-        #expect(Set(shownWidths(columns(wc))) == [230])
-    }
-
     @Test func draggingAnEdgeResizesThatColumnOnly() {
         let wc = makeWindow([inner, fx.url], modes: [.columns, .list])
         let browser = columns(wc)

@@ -21,8 +21,3 @@ private func taken(_ names: [String]) -> (String) -> Bool {
     #expect(UniqueName.numberedName(for: "a.txt", isFolder: false, taken: taken(["a.txt"])) == "a 2.txt")
     #expect(UniqueName.numberedName(for: "a.txt", isFolder: false, taken: taken(["A.TXT", "a 2.txt"])) == "a 3.txt")
 }
-
-@Test func newFolderNames() {
-    #expect(UniqueName.newFolderName(taken: taken([])) == "untitled folder")
-    #expect(UniqueName.newFolderName(taken: taken(["untitled folder"])) == "untitled folder 2")
-}

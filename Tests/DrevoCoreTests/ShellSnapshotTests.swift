@@ -59,16 +59,11 @@ import Testing
         #expect(r.out.hasSuffix(tmp.url.lastPathComponent + "\n"), "runs in the requested folder")
         #expect(!r.out.contains("noise"), "rc output stays out of commands")
         #expect(r.status == 0)
-        _ = try run(snap, "true")
+        let failing = try run(snap, "echo before; exit 4")
+        #expect(failing.out == "before\n")
+        #expect(failing.status == 4, "the command's exit status passes through")
         let reads = try String(contentsOf: tmp.url.appendingPathComponent("zdot/reads.log"), encoding: .utf8)
         #expect(reads == "read\n", ".zshrc is read once, when the setup is captured, not by each command")
-    }
-
-    @Test func exitStatusAndStderrPassThrough() throws {
-        let snap = try zshSnapshot()
-        let r = try run(snap, "echo before; exit 4")
-        #expect(r.out == "before\n")
-        #expect(r.status == 4)
     }
 
     @Test func bashToo() throws {

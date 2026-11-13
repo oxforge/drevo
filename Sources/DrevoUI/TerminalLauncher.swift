@@ -31,11 +31,12 @@ enum TerminalLauncher {
     /// Runs `command` in a new terminal window at `folder` via a temporary .command script,
     /// leaving an interactive shell open afterwards.
     static func run(_ command: String, in folder: URL, env: AppEnvironment) throws {
-        let script = try writeScript(command: command, folder: folder, shell: UserShell.loginShell())
+        let script = try writeScript(command: command, folder: folder, shell: UserShell.loginShell(), into: env.terminalScriptsFolder)
         env.opener.open([script], withApplicationAt: terminalApp(env.preferences))
     }
 
-    static var scriptsFolder: URL {
+    /// Where scripts go unless the environment says otherwise (`AppEnvironment.terminalScriptsFolder`).
+    nonisolated static var scriptsFolder: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
             .appendingPathComponent("tech.oxforge.drevo/commands", isDirectory: true)
     }
@@ -53,8 +54,7 @@ enum TerminalLauncher {
         """
     }
 
-    static func writeScript(command: String, folder: URL, shell: String) throws -> URL {
-        let dir = scriptsFolder
+    static func writeScript(command: String, folder: URL, shell: String, into dir: URL) throws -> URL {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         cleanOldScripts(in: dir)
         let url = dir.appendingPathComponent("run-\(UUID().uuidString.prefix(8)).command")
