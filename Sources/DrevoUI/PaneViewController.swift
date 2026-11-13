@@ -24,6 +24,9 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
     private(set) var viewMode: ViewMode
     private(set) var sort = FileSort()
     private(set) var filter = ""
+    /// What the pane is searching the current folder's tree for; nil while it shows a folder.
+    private(set) var searchQuery: String?
+    var searchResults: SearchResultsViewController? { browser as? SearchResultsViewController }
     var reloadPendingAfterRename = false
     var shownDirectories: [URL] { browser.shownDirectories }
     private(set) var browser: FileBrowser!
@@ -109,9 +112,14 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
         header.onFilterChange = { [weak self] text in self?.setFilter(text) }
         header.onFilterDone = { [weak self] clear in
             guard let self else { return }
-            if clear { self.clearFilter() }
+            if clear {
+                // Esc in the search field: back to the folder, or just out of the field
+                // if nothing was searched yet.
+                if self.searchQuery != nil { self.endSearch() } else { self.clearFilter() }
+            }
             self.focus()
         }
+        header.onSearchCommit = { [weak self] text in self?.search(text) }
         statusBar.isHidden = !env.preferences.showStatusBar
         sortButton.update(sort)
         sortButton.showShortcuts(env.keyMap)
@@ -127,6 +135,13 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
 
     private func makeBrowser(directory: URL) -> FileBrowser {
         let options = env.preferences.listingOptions(sort: sort, filter: filter)
+        if let searchQuery {
+            let results = SearchResultsViewController(root: directory, query: searchQuery, options: options, preferences: env.preferences)
+            results.spotlight = env.spotlight
+            results.runsSynchronously = env.runSearchesSynchronously
+            results.onProgress = { [weak self] in self?.updateStatus() }
+            return results
+        }
         switch viewMode {
         case .list:
             let list = FileListViewController(directory: directory, options: options, preferences: env.preferences)
@@ -162,6 +177,7 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
 
     private func installBrowser(directory: URL, selecting: URL?) {
         let hadFocus = browser.hasFocus
+        searchResults?.stop()
         if let old = browser as? NSViewController {
             old.view.removeFromSuperview()
             old.removeFromParent()
@@ -174,8 +190,47 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
         if hadFocus { b.focus() }
     }
 
+    // MARK: Search
+
+    /// ⌥⌘F: the header's field asks what to look for below this folder.
+    func beginSearch() {
+        activate(focus: false)
+        if searchQuery == nil, !filter.isEmpty || header.isFiltering { clearFilter() }
+        header.showSearch(searchQuery ?? "", focus: true)
+    }
+
+    /// Shows what `query` finds in the current folder and the folders inside it, in
+    /// place of the folder's contents. An empty query goes back to the folder.
+    func search(_ query: String) {
+        let query = query.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else {
+            if searchQuery != nil { endSearch() } else { clearFilter() }
+            focus()
+            return
+        }
+        let root = currentDirectory
+        if !filter.isEmpty { clearFilter(reload: false) }
+        searchQuery = query
+        header.showSearch(query, focus: false)
+        installBrowser(directory: root, selecting: nil)
+        searchResults?.start()
+        focus()
+        onChange?(self)
+    }
+
+    /// Back from the results to the folder that was searched.
+    func endSearch() {
+        guard searchQuery != nil else { return }
+        let root = currentDirectory
+        searchQuery = nil
+        header.clearFilter()
+        installBrowser(directory: root, selecting: nil)
+        onChange?(self)
+    }
+
     func setViewMode(_ mode: ViewMode) {
         guard mode != viewMode else { return }
+        endSearch()
         let dir = currentDirectory
         let selected = selectedItems.first?.url
         viewMode = mode
@@ -196,6 +251,7 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
 
     /// ⌘T: another tab on the same folder, right of the current one, with its own history.
     func newTab() {
+        endSearch()
         storedTabs = tabs
         let fresh = PaneTab(history: NavigationHistory(start: currentDirectory), viewMode: viewMode, sort: sort,
                             selection: selectedItems.first?.url)
@@ -241,6 +297,8 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
     /// Brings the active tab's saved state on screen.
     private func showActiveTab() {
         let tab = storedTabs[activeTabIndex]
+        // A search belongs to the tab it was made in and isn't kept.
+        searchQuery = nil
         if !filter.isEmpty || header.isFiltering { clearFilter(reload: false) }
         history = tab.history
         sort = tab.sort
@@ -263,6 +321,7 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
 
     /// Show `url` and remember it in history. Files are revealed: their folder opens with them selected.
     func navigate(to url: URL, selecting: URL? = nil) {
+        endSearch()
         if !filter.isEmpty || header.isFiltering { clearFilter(reload: false) }
         var target = url
         var select = selecting
@@ -278,6 +337,7 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
 
     /// Shows a directory even if it's a package (Show Package Contents).
     func enterDirectory(_ url: URL) {
+        endSearch()
         history.visit(url)
         browser.display(url, selecting: nil)
         refreshChrome()
@@ -350,6 +410,8 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
     }
 
     func beginFilter() {
+        // While results are shown the field is the search field: ⌘F edits the search.
+        guard searchQuery == nil else { return beginSearch() }
         activate(focus: false)
         header.beginFilter()
     }
@@ -413,6 +475,7 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
     }
 
     private func goBack() {
+        endSearch()
         guard let url = history.goBack() else { return }
         let from = currentDirectory
         browser.display(url, selecting: from.deletingLastPathComponent() == url ? from : nil)
@@ -421,6 +484,7 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
     }
 
     private func goForward() {
+        endSearch()
         guard let url = history.goForward() else { return }
         browser.display(url, selecting: nil)
         refreshChrome()
@@ -468,7 +532,13 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
     func perform(_ id: CommandID) -> Bool {
         switch id {
         case .open: open(selectedItems)
-        case .enclosingFolder: goToEnclosingFolder()
+        case .enclosingFolder:
+            // From a search result: the folder it is in, with it selected.
+            if searchQuery != nil, selectedItems.count == 1, let item = selectedItems.first {
+                navigate(to: item.url.deletingLastPathComponent(), selecting: item.url)
+            } else {
+                goToEnclosingFolder()
+            }
         case .levelUp: if !browser.levelUp() { goToEnclosingFolder() }
         case .levelDown:
             if !browser.levelDown() {
@@ -487,6 +557,7 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
         case .columnsView: setViewMode(.columns)
         case .goToPath: beginPathEditing()
         case .filter: beginFilter()
+        case .search: beginSearch()
         case .sortByName: chooseSort(.name)
         case .sortByKind: chooseSort(.kind)
         case .sortByModified: chooseSort(.modified)
@@ -532,6 +603,12 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
     private func updateStatus() {
         statusBar.update(items: browser.visibleItems, selected: browser.selectedItems, directory: currentDirectory)
         if !filter.isEmpty { statusBar.left.stringValue = "Filter “\(filter)”: " + statusBar.left.stringValue }
+        if let searchQuery, let results = searchResults {
+            var text = "Search “\(searchQuery)”: " + statusBar.left.stringValue
+            if results.isSearching { text += " · searching…" }
+            if results.isTruncated { text += " · stopped at the first \(browser.visibleItems.count)" }
+            statusBar.left.stringValue = text
+        }
     }
 
     // MARK: FileBrowserDelegate
@@ -563,6 +640,10 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
             clearFilter()
             return true
         }
+        if event.keyCode == 53, searchQuery != nil { // Esc leaves the search results
+            endSearch()
+            return true
+        }
         guard let id = env.keyMap.command(for: event) else { return handleFilterTyping(event) }
         // Arrow keys fall through to the table when the command has nothing to do.
         if id == .levelDown { return perform(.levelDown) }
@@ -572,7 +653,8 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
     /// Keys no command claims: printable characters extend the filter, Backspace shortens it.
     private func handleFilterTyping(_ event: NSEvent) -> Bool {
         let mods = event.modifierFlags.intersection([.command, .control])
-        guard mods.isEmpty, let chars = event.characters, !chars.isEmpty else { return false }
+        // Results aren't filtered by typing: the field above them holds the search.
+        guard searchQuery == nil, mods.isEmpty, let chars = event.characters, !chars.isEmpty else { return false }
         if event.keyCode == 51 { // Backspace
             guard !filter.isEmpty else { return false }
             deleteFilterCharacter()

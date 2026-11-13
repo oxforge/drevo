@@ -96,6 +96,8 @@ func testEnvironment(trash: URL, prompts: ScriptedPrompts? = nil, opener: Record
     let setup = ShellSetup(shell: "/bin/zsh", definitionsFile: scratch.appendingPathComponent("defs.sh"))
     setup.captureEnvironment = scratchShellEnvironment(zdotdir: scratch)
     let env = AppEnvironment.ephemeral(opener: opener, operations: ops, shellSetup: setup)
+    env.spotlight = nil
+    env.runSearchesSynchronously = true
     env.pasteboard = NSPasteboard(name: NSPasteboard.Name("drevo.tests.\(UUID().uuidString)"))
     return env
 }

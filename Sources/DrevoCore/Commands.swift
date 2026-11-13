@@ -52,6 +52,7 @@ public extension CommandID {
     static let forward = CommandID("nav.forward")
     static let goToPath = CommandID("nav.goToPath")
     static let filter = CommandID("nav.filter")
+    static let search = CommandID("nav.search")
     // Go
     static let goHome = CommandID("go.home")
     static let goDesktop = CommandID("go.desktop")
@@ -136,6 +137,7 @@ public enum CommandRegistry {
         CommandSpec(.forward, "Forward", .navigation, keys: ["cmd+]"]),
         CommandSpec(.goToPath, "Go to Folder…", .navigation, keys: ["cmd+l", "shift+cmd+g"], help: "Type a path; Tab completes"),
         CommandSpec(.filter, "Filter…", .navigation, keys: ["cmd+f"], help: "Show only matching names (or just start typing; * and ? are wildcards)"),
+        CommandSpec(.search, "Search…", .navigation, keys: ["opt+cmd+f"], help: "Find files by name in this folder and all folders inside it"),
         // Go — exactly Finder's.
         CommandSpec(.goHome, "Home", .go, keys: ["shift+cmd+h"]),
         CommandSpec(.goDesktop, "Desktop", .go, keys: ["shift+cmd+d"]),

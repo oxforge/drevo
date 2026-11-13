@@ -104,6 +104,14 @@ public struct FileItem: Hashable, Sendable {
         )
     }
 
+    /// The item at `url` as it is on disk now, read the way listings read it (fast);
+    /// nil if nothing is there.
+    public static func current(at url: URL) -> FileItem? {
+        var st = stat()
+        guard lstat(url.path, &st) == 0 else { return nil }
+        return FileItem(path: url.path, name: url.lastPathComponent, stat: st)
+    }
+
     /// Name without the extension, as Finder selects it when renaming.
     public var baseName: String {
         isContainer ? name : (name as NSString).deletingPathExtension

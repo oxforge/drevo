@@ -31,6 +31,10 @@ final class AppEnvironment {
     var pasteboard: NSPasteboard = .general
     /// The user's shell setup, loaded once for the command line.
     let shellSetup: ShellSetup
+    /// Spotlight for searches; tests search without it.
+    var spotlight: FileSearch.SpotlightSource? = Spotlight.find
+    /// Tests search inline so results are there right after the call.
+    var runSearchesSynchronously = false
     private let overridesURL: URL?
     private(set) var keyMap: KeyMap
     private(set) var keyMapProblems: [String] = []

@@ -274,7 +274,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
              .edit, .showPackageContents, .revealInFinder, .getInfo:
             return pane.canPerformFileCommand(id)
         case .quickLook: return !pane.selectedItems.isEmpty
-        case .openTerminal, .runCommand, .toggleConsole, .goToPath, .filter, .commandPalette: return true
+        case .openTerminal, .runCommand, .toggleConsole, .goToPath, .filter, .search, .commandPalette: return true
         case .sortByName, .sortByKind, .sortByModified, .sortByCreated, .sortBySize, .reverseSort: return true
         case .stopCommand: return shell.isRunning
         case .runInTerminal: return commandBar.hasFocus

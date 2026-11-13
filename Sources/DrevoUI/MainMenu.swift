@@ -53,7 +53,7 @@ enum MainMenu {
         add(edit, [.pasteMove], keyMap)
         addStandard(edit, .selectAll, #selector(NSText.selectAll(_:)), keyMap)
         edit.addItem(.separator())
-        add(edit, [.filter], keyMap)
+        add(edit, [.filter, .search], keyMap)
 
         let view = submenu(main, "View")
         add(view, [.listView, .columnsView], keyMap)

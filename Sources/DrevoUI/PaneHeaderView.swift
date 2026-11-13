@@ -12,6 +12,11 @@ final class PaneHeaderView: NSView, NSTextFieldDelegate, NSSearchFieldDelegate {
     var onPathComplete: ((String) -> [String])?
     var onFilterChange: ((String) -> Void)?
     var onFilterDone: ((_ clear: Bool) -> Void)?
+    /// Return in the field while it asks for a search (`beginSearch`).
+    var onSearchCommit: ((String) -> Void)?
+    /// The field is asking for (or showing) a search of the subfolders, not filtering
+    /// the folder as you type.
+    private(set) var isSearchMode = false
     var onEditingEnded: (() -> Void)?
     let badge = NSTextField(labelWithString: "")
     private let accentLine = NSView()
@@ -147,10 +152,21 @@ final class PaneHeaderView: NSView, NSTextFieldDelegate, NSSearchFieldDelegate {
     func clearFilter() {
         filterField.stringValue = ""
         filterField.isHidden = true
+        filterField.placeholderString = "Filter"
+        isSearchMode = false
+    }
+
+    /// Turns the field into the search field with `text` in it; `focus` to type in it.
+    func showSearch(_ text: String, focus: Bool) {
+        isSearchMode = true
+        filterField.placeholderString = "Search subfolders"
+        filterField.stringValue = text
+        filterField.isHidden = false
+        if focus { window?.makeFirstResponder(filterField) }
     }
 
     func controlTextDidChange(_ obj: Notification) {
-        if (obj.object as? NSSearchField) === filterField { onFilterChange?(filterField.stringValue) }
+        if (obj.object as? NSSearchField) === filterField, !isSearchMode { onFilterChange?(filterField.stringValue) }
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
@@ -173,6 +189,9 @@ final class PaneHeaderView: NSView, NSTextFieldDelegate, NSSearchFieldDelegate {
             switch selector {
             case #selector(NSResponder.cancelOperation(_:)):
                 onFilterDone?(true)
+                return true
+            case #selector(NSResponder.insertNewline(_:)) where isSearchMode:
+                onSearchCommit?(filterField.stringValue)
                 return true
             case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.moveDown(_:)):
                 onFilterDone?(false)
