@@ -119,3 +119,61 @@ private func refusal(_ outcome: KeyRecording.Outcome) -> String? {
     }
     #expect(spec.matches("", keys: keys))
 }
+
+// MARK: The Return-key setting moves Return
+
+private func renamesMode() -> KeyMap {
+    var map = KeyMap()
+    map.applyReturnRenames()
+    return map
+}
+
+/// The key map Drevo loads: defaults for the setting, then the file.
+private func loaded(_ file: KeyBindingsFile, renames: Bool) throws -> KeyMap {
+    var map = renames ? renamesMode() : KeyMap()
+    #expect(try map.applyOverrides(json: file.data).isEmpty)
+    return map
+}
+
+@Test func returnMoveKeepsReturnBoundWhenRenameWasEdited() throws {
+    var file = KeyBindingsFile()
+    file.set([combo("f2"), combo("cmd+r"), combo("cmd+e")], for: .rename)
+    let before = try loaded(file, renames: false)
+    file.apply(KeyRecording.movingReturn(to: .rename, in: before), defaults: renamesMode())
+    let after = try loaded(file, renames: true)
+    #expect(after.command(for: combo("return")) == .rename)
+    #expect(after.keys(for: .rename) == [combo("return"), combo("f2"), combo("cmd+r"), combo("cmd+e")])
+    #expect(after.keys(for: .open) == [combo("cmd+down")])
+    #expect(after.overridden == [.rename], "Open is back to its default, so it has no entry")
+}
+
+@Test func returnMoveBackKeepsReturnBoundWhenOpenWasEdited() throws {
+    var file = KeyBindingsFile()
+    file.set([combo("cmd+down"), combo("cmd+o")], for: .open)
+    let before = try loaded(file, renames: true)
+    file.apply(KeyRecording.movingReturn(to: .open, in: before), defaults: KeyMap())
+    let after = try loaded(file, renames: false)
+    #expect(after.command(for: combo("return")) == .open)
+    #expect(after.keys(for: .open) == [combo("return"), combo("cmd+down"), combo("cmd+o")])
+    #expect(after.keys(for: .rename) == [combo("f2"), combo("cmd+r")])
+    #expect(after.overridden == [.open])
+}
+
+@Test func returnMoveTakesReturnFromAnyCommand() throws {
+    var file = KeyBindingsFile()
+    file.set([combo("cmd+down")], for: .open)
+    file.set([combo("return"), combo("space")], for: .quickLook)
+    let before = try loaded(file, renames: false)
+    file.apply(KeyRecording.movingReturn(to: .open, in: before), defaults: KeyMap())
+    let after = try loaded(file, renames: false)
+    #expect(after.keys(for: .quickLook) == [combo("space")])
+    #expect(after.command(for: combo("return")) == .open)
+}
+
+@Test func returnMoveWithNothingSavedWritesNothing() throws {
+    var file = KeyBindingsFile()
+    file.apply(KeyRecording.movingReturn(to: .rename, in: KeyMap()), defaults: renamesMode())
+    #expect(file.isEmpty)
+    file.apply(KeyRecording.movingReturn(to: .open, in: renamesMode()), defaults: KeyMap())
+    #expect(file.isEmpty)
+}

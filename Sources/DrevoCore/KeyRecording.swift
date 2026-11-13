@@ -74,6 +74,17 @@ public enum KeyRecording {
         return .apply([id: keys], note: note)
     }
 
+    /// What flipping the Return-key setting does: Return goes first on `target` (Open or
+    /// Rename) and comes off every other command, even when they were edited.
+    public static func movingReturn(to target: CommandID, in map: KeyMap) -> [CommandID: [KeyCombo]] {
+        let ret = KeyCombo.named(.return)
+        var changes: [CommandID: [KeyCombo]] = [target: [ret] + map.keys(for: target).filter { $0 != ret }]
+        for spec in CommandRegistry.all where spec.id != target && map.keys(for: spec.id).contains(ret) {
+            changes[spec.id] = map.keys(for: spec.id).filter { $0 != ret }
+        }
+        return changes
+    }
+
     /// The first command (registry order) other than `id` bound to one of the readings.
     private static func owner(of candidates: [KeyCombo], besides id: CommandID, in map: KeyMap) -> (CommandID, KeyCombo)? {
         for spec in CommandRegistry.all where spec.id != id {
