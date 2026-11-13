@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/icon.png" width="128" alt="Drevo icon"></p>
+
 # Drevo
 
 A native dual-pane file manager for macOS, built to replace Finder for everyday use.
@@ -255,6 +257,7 @@ Tests/              DrevoCoreTests (engine) and DrevoUITests (real windows drive
 scripts/            make-icon.swift draws the app icon; make-signing-identity.sh,
                     ci-signing-secret.sh and export-identity.swift set up signing.
 Resources/          Info.plist template.
+docs/               icon.png for this README (from make-icon.swift).
 .github/workflows/  CI (test + build on every push) and Release (DMG on a version tag).
 ```
 
