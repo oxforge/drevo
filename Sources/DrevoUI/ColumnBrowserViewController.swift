@@ -17,7 +17,9 @@ final class ColumnBrowserViewController: NSViewController, FileBrowser {
 
     private let scrollView = NSScrollView()
     private let stack = NSStackView()
-    static let columnWidth: CGFloat = 230
+    /// Widths set by dragging one column's edge, by folder path. They last as long as
+    /// this browser; the width for every other column is `Preferences.columnWidth`.
+    private var customWidths: [String: CGFloat] = [:]
 
     init(directory: URL, options: ListingOptions, preferences: Preferences) {
         self.options = options
@@ -258,12 +260,32 @@ final class ColumnBrowserViewController: NSViewController, FileBrowser {
             guard let self else { return }
             self.delegate?.browserDragEnded(self)
         }
+        col.onResize = { [weak self, weak col] width, all in
+            guard let self, let col else { return }
+            self.setWidth(width, ofColumn: col.index, allColumns: all)
+        }
         columns.append(col)
         if let preview { stack.removeView(preview); self.preview = nil }
         stack.addArrangedSubview(col.container)
-        col.container.widthAnchor.constraint(equalToConstant: Self.columnWidth).isActive = true
+        col.width = customWidths[directory.standardizedFileURL.path] ?? preferences.columnWidth
         col.container.heightAnchor.constraint(equalTo: scrollView.contentView.heightAnchor).isActive = true
         return col
+    }
+
+    /// A column's edge was dragged to `width`. Alone, the column keeps that width while
+    /// this browser lives; with `allColumns` (⌥-drag, as in Finder) every column takes
+    /// it, and so do columns opened later, in any pane and after a relaunch.
+    func setWidth(_ width: CGFloat, ofColumn index: Int, allColumns: Bool) {
+        guard columns.indices.contains(index) else { return }
+        let width = Preferences.columnWidthRange.clamp(width.rounded())
+        if allColumns {
+            customWidths.removeAll()
+            preferences.columnWidth = width
+            columns.forEach { $0.width = width }
+        } else {
+            customWidths[columns[index].directory.standardizedFileURL.path] = width
+            columns[index].width = width
+        }
     }
 
     private func removeColumns(from index: Int) {
@@ -304,7 +326,7 @@ final class ColumnBrowserViewController: NSViewController, FileBrowser {
             let p = FilePreviewView(items: selected, relativeDates: preferences.relativeDates)
             preview = p
             stack.addArrangedSubview(p)
-            p.widthAnchor.constraint(equalToConstant: Self.columnWidth + 40).isActive = true
+            p.widthAnchor.constraint(equalToConstant: preferences.columnWidth + 40).isActive = true
             p.heightAnchor.constraint(equalTo: scrollView.contentView.heightAnchor).isActive = true
         }
     }

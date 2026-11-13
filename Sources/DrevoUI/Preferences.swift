@@ -29,8 +29,8 @@ enum RowSize: Int, CaseIterable {
 }
 
 /// App settings. Changing a value posts `Preferences.didChange` with its `Key` in
-/// userInfo, except for the two that are saved state rather than settings (`windowState`,
-/// `commandHistory`).
+/// userInfo, except for the ones that are saved state rather than settings (`windowState`,
+/// `commandHistory`, `columnWidth`).
 @MainActor
 final class Preferences {
     /// The names the values are stored under.
@@ -38,7 +38,7 @@ final class Preferences {
         case showHidden, foldersFirst, returnRenames, confirmTransfers, showKeyHints, showStatusBar
         case showCommandLine, showSidebar, showAllExtensions, relativeDates, restoreState, interactiveShell
         case rowSize, defaultViewMode, paneCount, terminalAppPath, editorAppPath
-        case windowState, commandHistory, favorites
+        case windowState, commandHistory, favorites, columnWidth
     }
 
     nonisolated static let didChange = Notification.Name("drevo.preferencesDidChange")
@@ -108,6 +108,15 @@ final class Preferences {
         set { store.set(Array(newValue.suffix(200)), forKey: Key.commandHistory.rawValue) }
     }
 
+    /// Width of a column in Columns view, set by ⌥-dragging a column's edge. Saved
+    /// without a notification: the browser that was resized has applied it already.
+    var columnWidth: CGFloat {
+        get { Self.columnWidthRange.clamp((value(.columnWidth) as? Double).map { CGFloat($0) } ?? 230) }
+        set { store.set(Double(Self.columnWidthRange.clamp(newValue)), forKey: Key.columnWidth.rawValue) }
+    }
+
+    static let columnWidthRange: ClosedRange<CGFloat> = 120...800
+
     var favoritePaths: [String]? {
         get { value(.favorites) as? [String] }
         set { set(newValue, .favorites) }
@@ -135,4 +144,8 @@ final class Preferences {
         store.set(value, forKey: key.rawValue)
         NotificationCenter.default.post(name: Self.didChange, object: self, userInfo: [Self.changedKey: key])
     }
+}
+
+extension ClosedRange {
+    func clamp(_ value: Bound) -> Bound { Swift.min(upperBound, Swift.max(lowerBound, value)) }
 }

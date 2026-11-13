@@ -15,6 +15,19 @@ final class FolderColumn: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     var menuProvider: (([FileItem]) -> NSMenu?)?
     var onDrop: (([URL], URL, TransferKind) -> Void)?
     var onDragEnded: (() -> Void)?
+    /// The right edge was dragged: the width asked for, and whether ⌥ was held (all columns).
+    var onResize: ((CGFloat, Bool) -> Void)?
+
+    private let resizeHandle = ColumnResizeHandle()
+    var resizeHandleForTesting: ColumnResizeHandle { resizeHandle }
+    private lazy var widthConstraint = container.widthAnchor.constraint(equalToConstant: 230)
+    var width: CGFloat {
+        get { widthConstraint.constant }
+        set {
+            widthConstraint.constant = newValue
+            widthConstraint.isActive = true
+        }
+    }
 
     let tableView = FileTableView()
     let container = NSView()
@@ -64,7 +77,10 @@ final class FolderColumn: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 
         let divider = NSBox()
         divider.boxType = .separator
-        for v in [scrollView, message, divider] as [NSView] {
+        let handle = resizeHandle
+        handle.currentWidth = { [weak self] in self?.width ?? 0 }
+        handle.onResize = { [weak self] width, all in self?.onResize?(width, all) }
+        for v in [scrollView, message, divider, handle] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(v)
         }
@@ -77,6 +93,10 @@ final class FolderColumn: NSObject, NSTableViewDataSource, NSTableViewDelegate {
             divider.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             divider.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             divider.widthAnchor.constraint(equalToConstant: 1),
+            handle.topAnchor.constraint(equalTo: container.topAnchor),
+            handle.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            handle.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            handle.widthAnchor.constraint(equalToConstant: ColumnResizeHandle.thickness),
             message.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor),
             message.centerYAnchor.constraint(equalTo: scrollView.centerYAnchor),
             message.widthAnchor.constraint(equalTo: scrollView.widthAnchor, constant: -24),
@@ -201,5 +221,31 @@ final class FolderColumn: NSObject, NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
         onDragEnded?()
+    }
+}
+
+/// The strip over a column's right edge: dragging it resizes the column, with ⌥ all of them.
+@MainActor
+final class ColumnResizeHandle: NSView {
+    static let thickness: CGFloat = 5
+    var currentWidth: (() -> CGFloat)?
+    var onResize: ((CGFloat, Bool) -> Void)?
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .resizeLeftRight)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard let window, let start = currentWidth?() else { return }
+        let startX = event.locationInWindow.x
+        while let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+            if next.type == .leftMouseUp { break }
+            drag(from: start, by: next.locationInWindow.x - startX, option: next.modifierFlags.contains(.option))
+        }
+    }
+
+    /// The edge is `delta` points right of where the drag began, when the column was `start` wide.
+    func drag(from start: CGFloat, by delta: CGFloat, option: Bool) {
+        onResize?(start + delta, option)
     }
 }
