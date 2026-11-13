@@ -62,13 +62,19 @@ make run
 | `make run` | `make app`, then opens it |
 | `make test` | Unit and UI-controller tests (swift-testing) |
 | `make snapshot` | Renders the window to `build/snapshots/{light,dark}.png` (add `SNAP_ARGS="--open ~/some/folder"`) |
+| `make dmg` | `make app`, then puts it in `build/Drevo-<version>.dmg` with an Applications shortcut (`VERSION=0.2.0` sets the version) |
+| `make ci-signing-secret` | One-time: stores the "Drevo Local Signing" identity as GitHub secrets, so releases are signed with it too |
 | `make clean` | Removes `.build` and `build` |
 
 The Makefile works around two Command-Line-Tools quirks: it passes `--build-system native`
 (the default swift-build backend fails without Xcode), and it adds the CLT's
-`Testing.framework` path so `swift test` can find swift-testing.
+`Testing.framework` path so `swift test` can find swift-testing (only where that folder
+exists; with Xcode, as on the CI runners, swift-testing is found without it).
 
 ## Install
+
+Download the DMG from the repository's Releases page, open it, and drag Drevo to
+Applications. Or build it yourself:
 
 ```bash
 cp -R build/Drevo.app /Applications/
@@ -77,6 +83,11 @@ cp -R build/Drevo.app /Applications/
 Use `~/Applications` if you prefer. Install before switching on any of the Finder
 integration below, so macOS registers the copy that stays put.
 
+**First launch of a downloaded release.** The release is signed with a self-signed
+certificate, not an Apple Developer ID, so macOS refuses to open it the first time ("Apple
+could not verify…"). Click Done, then System Settings ▸ Privacy & Security ▸ **Open
+Anyway**. macOS remembers the choice. Releases run on Apple Silicon Macs only.
+
 **Privacy prompts.** macOS asks once per protected folder (Desktop, Documents, Downloads,
 removable volumes). For a file manager it's simpler to grant **Full Disk Access** in System
 Settings ▸ Privacy & Security ▸ Full Disk Access. `make app` signs ad hoc, so macOS can
@@ -84,7 +95,41 @@ ask again after a rebuild. To keep the grants, sign with a stable identity. Eith
 `make signing-identity` once: it creates a self-signed certificate, "Drevo Local
 Signing", in your login keychain, and `make app` signs with it from then on (macOS asks
 for your login password so codesign may use the key; choose Always Allow). Or pass your own:
-`make app SIGN_ID="Apple Development: Your Name (TEAMID)"`.
+`make app SIGN_ID="Apple Development: Your Name (TEAMID)"`. Releases are signed with the
+same "Drevo Local Signing" certificate (see below), so a downloaded release and your own
+build count as the same app and keep the grants.
+
+## CI and releases
+
+GitHub Actions runs two workflows, on GitHub's `xcode-27` runner (Apple Silicon, the
+Xcode 27 toolchain):
+
+- **CI** (`.github/workflows/ci.yml`): every push to any branch and every pull request
+  runs `make test`, then `make app`. A newer push to the same branch cancels the run
+  still going.
+- **Release** (`.github/workflows/release.yml`): pushing a version tag tests and builds
+  that version, signs it, and publishes a GitHub release with `Drevo-<version>.dmg`
+  attached and notes generated from the commits. The tag sets the app's version; a tag
+  with a suffix (`v0.3.0-beta1`) makes a pre-release. If the build fails, no release
+  is made.
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+**Signing releases, once.** With the GitHub CLI logged in (`gh auth login`) and the repo
+pushed, run:
+
+```bash
+make ci-signing-secret
+```
+
+It creates the "Drevo Local Signing" identity if you don't have it yet, exports it with
+a random password and stores both as the repository secrets `SIGNING_CERT_P12` and
+`SIGNING_CERT_PASSWORD` (macOS asks for your login password so the export may read the
+private key). Without these secrets, releases are signed ad hoc, which works but makes
+macOS forget the app's privacy grants after every update; the Release run then shows a
+warning.
 
 ## Using Drevo instead of Finder
 
@@ -207,8 +252,10 @@ Sources/DrevoUI     AppKit app: window, panes, List and Column browsers, sidebar
 Sources/drevo       Executable entry point.
 Tests/              DrevoCoreTests (engine) and DrevoUITests (real windows driven with
                     synthetic key events, fake drags, scripted prompts).
-scripts/            make-icon.swift draws the app icon.
+scripts/            make-icon.swift draws the app icon; make-signing-identity.sh,
+                    ci-signing-secret.sh and export-identity.swift set up signing.
 Resources/          Info.plist template.
+.github/workflows/  CI (test + build on every push) and Release (DMG on a version tag).
 ```
 
 Deferred work is tracked in [TODO.md](TODO.md).

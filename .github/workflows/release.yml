@@ -1,0 +1,117 @@
+# Pushing a version tag (git tag v0.2.0 && git push origin v0.2.0) tests and builds that
+# version, signs it, and publishes a GitHub release with Drevo-0.2.0.dmg attached.
+# A tag with a suffix (v0.3.0-beta1) makes a pre-release. A failed build makes no release.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+concurrency:
+  group: release-${{ github.ref }}
+
+permissions:
+  contents: write # create the release
+
+env:
+  SIGN_NAME: Drevo Local Signing # the certificate stored by `make ci-signing-secret`
+
+jobs:
+  release:
+    runs-on: xcode-27
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the build number is the commit count
+
+      - name: Read version from the tag
+        id: version
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME is not vX.Y.Z or vX.Y.Z-suffix"
+            exit 1
+          fi
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          if [ -n "${BASH_REMATCH[2]}" ]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Toolchain
+        run: |
+          sw_vers
+          xcode-select -p
+          swift --version
+
+      - name: Test
+        run: make test
+
+      # The certificate goes into a throwaway keychain that only codesign may use.
+      # Without the secrets the app is signed ad hoc, and the run carries a warning.
+      - name: Load signing certificate
+        id: signing
+        env:
+          P12_BASE64: ${{ secrets.SIGNING_CERT_P12 }}
+          P12_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+        run: |
+          if [ -z "$P12_BASE64" ] || [ -z "$P12_PASSWORD" ]; then
+            echo "::warning::SIGNING_CERT_P12 and SIGNING_CERT_PASSWORD are not set, so the app is signed ad hoc and macOS forgets its privacy grants after each update. Run make ci-signing-secret once to set them."
+            echo "identity=-" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_pass="$(uuidgen)"
+          security create-keychain -p "$keychain_pass" "$keychain"
+          echo "keychain=$keychain" >> "$GITHUB_OUTPUT"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$keychain_pass" "$keychain"
+          printf '%s' "$P12_BASE64" | base64 --decode > "$RUNNER_TEMP/identity.p12"
+          security import "$RUNNER_TEMP/identity.p12" -k "$keychain" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/identity.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_pass" "$keychain" > /dev/null
+          # Put it first in the search list, keeping the keychains already there.
+          searchlist=("$keychain")
+          while IFS= read -r line; do
+            line="${line#"${line%%[![:space:]]*}"}"
+            line="${line#\"}"
+            searchlist+=("${line%\"}")
+          done < <(security list-keychains -d user)
+          security list-keychains -d user -s "${searchlist[@]}"
+          # Some macOS versions only sign with a self-signed certificate once it is trusted.
+          cp /usr/bin/true "$RUNNER_TEMP/probe"
+          if ! codesign --force --sign "$SIGN_NAME" "$RUNNER_TEMP/probe"; then
+            echo "Trusting the certificate for code signing on this runner"
+            security find-certificate -c "$SIGN_NAME" -p "$keychain" > "$RUNNER_TEMP/cert.pem"
+            sudo security add-trusted-cert -d -r trustRoot -p codeSign -k "$keychain" "$RUNNER_TEMP/cert.pem"
+            codesign --force --sign "$SIGN_NAME" "$RUNNER_TEMP/probe"
+          fi
+          echo "identity=$SIGN_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Build DMG
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SIGN_ID: ${{ steps.signing.outputs.identity }}
+        run: make dmg VERSION="$VERSION" SIGN_ID="$SIGN_ID"
+
+      - name: Check the signature
+        run: |
+          codesign --verify --strict --verbose=2 build/Drevo.app
+          codesign --display --verbose=2 build/Drevo.app 2>&1 | grep -E '^(Identifier|Authority|Signature)='
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+        run: |
+          flags=(--title "Drevo $VERSION" --generate-notes --verify-tag)
+          if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" "build/Drevo-$VERSION.dmg" "${flags[@]}"
+
+      - name: Remove the signing keychain
+        if: always() && steps.signing.outputs.keychain != ''
+        env:
+          KEYCHAIN: ${{ steps.signing.outputs.keychain }}
+        run: security delete-keychain "$KEYCHAIN"

@@ -2,6 +2,7 @@
 
 APP_NAME    := Drevo
 BUNDLE_ID   := tech.oxforge.drevo
+# Release builds pass the tag's version: make dmg VERSION=0.2.0
 VERSION     := 0.1.0
 BUILD_NUM   := $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
 CONFIG      ?= release
@@ -14,15 +15,18 @@ SIGN_ID     ?= $(shell security find-identity -p codesigning 2>/dev/null | grep 
 
 # The default swift-build backend fails on a Command-Line-Tools-only install.
 SWIFT_FLAGS := --build-system native
-# swift-testing ships with the CLT, but SwiftPM does not add its framework path.
+# swift-testing ships with the CLT, but SwiftPM does not add its framework path. Xcode
+# (as on the CI runners) finds it by itself, so the flags go in only where it's there.
 CLT_FW      := $(shell xcode-select -p)/Library/Developer/Frameworks
-TEST_FLAGS  := -Xswiftc -F$(CLT_FW) -Xlinker -F$(CLT_FW) -Xlinker -rpath -Xlinker $(CLT_FW)
+TEST_FLAGS  := $(if $(wildcard $(CLT_FW)/Testing.framework),-Xswiftc -F$(CLT_FW) -Xlinker -F$(CLT_FW) -Xlinker -rpath -Xlinker $(CLT_FW))
+
+DMG         := build/$(APP_NAME)-$(VERSION).dmg
 
 BIN_DIR      = $(shell swift build $(SWIFT_FLAGS) -c $(CONFIG) --show-bin-path 2>/dev/null)
 
 SHELL := /bin/bash
 
-.PHONY: build test app run snapshot icon clean signing-identity
+.PHONY: build test app dmg run snapshot icon clean signing-identity ci-signing-secret
 
 # SwiftPM prints a deprecation note for --build-system native on every run; the flag is
 # still required without Xcode, so the note is filtered (exit status is kept).
@@ -50,9 +54,27 @@ app: build icon
 	codesign --force --sign "$(SIGN_ID)" --identifier $(BUNDLE_ID) "build/Drevo.app"
 	@echo "Built build/Drevo.app"
 
+# The app in a disk image with an Applications shortcut, for a GitHub release.
+# hdiutil now and then fails with "Resource busy" on CI runners, so it gets three tries.
+dmg: app
+	rm -rf build/dmg "$(DMG)"
+	mkdir -p build/dmg
+	ditto "build/Drevo.app" "build/dmg/Drevo.app"
+	ln -s /Applications build/dmg/Applications
+	for try in 1 2 3; do \
+	    hdiutil create -volname "$(APP_NAME)" -srcfolder build/dmg -format UDZO -ov "$(DMG)" && break; \
+	    [ $$try = 3 ] && exit 1; echo "hdiutil failed, trying again…"; sleep 5; \
+	done
+	rm -rf build/dmg
+	@echo "Built $(DMG)"
+
 # One-time: a self-signed identity so rebuilds keep their privacy permissions.
 signing-identity:
 	SIGN_NAME="$(LOCAL_SIGN_ID)" scripts/make-signing-identity.sh
+
+# One-time: the same identity as GitHub secrets, so release builds are signed with it too.
+ci-signing-secret:
+	SIGN_NAME="$(LOCAL_SIGN_ID)" scripts/ci-signing-secret.sh
 
 run: app
 	open "build/Drevo.app"
