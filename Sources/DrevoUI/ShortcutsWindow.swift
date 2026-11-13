@@ -43,7 +43,22 @@ enum ShortcutsWindow {
             window = w
             return w
         }()
-        ((w.contentView as? NSScrollView)?.documentView as? NSTextView)?.textStorage?.setAttributedString(text(keyMap: keyMap))
+        textView?.textStorage?.setAttributedString(text(keyMap: keyMap))
         w.makeKeyAndOrderFront(nil)
+    }
+
+    /// Keeps an open window in step when keys change (Settings ▸ Keys, keybindings.json).
+    static func refresh(keyMap: KeyMap) {
+        guard window?.isVisible == true else { return }
+        textView?.textStorage?.setAttributedString(text(keyMap: keyMap))
+    }
+
+    static func close() { window?.close() }
+
+    /// What the window shows, if it's open.
+    static var shownText: String? { window?.isVisible == true ? textView?.string : nil }
+
+    private static var textView: NSTextView? {
+        (window?.contentView as? NSScrollView)?.documentView as? NSTextView
     }
 }

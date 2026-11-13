@@ -147,21 +147,10 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
         close()
         host.window?.makeKeyAndOrderFront(nil)
         host.paneGroup.activePane.focus()
-        if spec.isStandardEdit {
-            NSApp.sendAction(Self.selector(for: spec.id), to: nil, from: nil)
+        if let action = spec.id.standardEditAction {
+            NSApp.sendAction(action, to: nil, from: nil)
         } else {
             host.perform(spec.id)
-        }
-    }
-
-    private static func selector(for id: CommandID) -> Selector {
-        switch id {
-        case .copy: return #selector(NSText.copy(_:))
-        case .cut: return #selector(NSText.cut(_:))
-        case .paste: return #selector(NSText.paste(_:))
-        case .selectAll: return #selector(NSText.selectAll(_:))
-        case .undo: return #selector(UndoActions.undo(_:))
-        default: return #selector(UndoActions.redo(_:))
         }
     }
 

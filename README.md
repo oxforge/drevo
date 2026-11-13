@@ -46,8 +46,9 @@ line that runs in the current folder, and a Settings window for the rest.
   palette that searches every command and shows its shortcut, and Help ▸ Keyboard
   Shortcuts lists them all.
 - **Configurable.** Hidden files (⇧⌘.), Return opens or renames, row size, which bars
-  show, terminal and editor apps, and remappable keys (`keybindings.json`). Settings ▸
-  General can record a global shortcut that brings Drevo to the front from any app.
+  show, terminal and editor apps, and every shortcut (Settings ▸ Keys, or
+  `keybindings.json`). Settings ▸ General can record a global shortcut that brings Drevo
+  to the front from any app.
 
 ## Requirements
 
@@ -200,8 +201,20 @@ on. Every frequent F-key action also has a key that needs no Fn.
 
 ### Remapping keys
 
-Help ▸ **Edit keybindings.json** creates `~/Library/Application Support/drevo/keybindings.json`
-and a `keybindings.defaults.json` reference beside it. Map command ids to keys:
+**Settings ▸ Keys** lists every command with its keys. Click a key and press the new
+one, click **+** to add another, hover over a key and click **×** to remove it; **↺**
+resets one command and **Reset All…** every one. Search finds commands by name or by key
+("rename", "f5", "⌘D"), and **Changed** shows only the ones you changed. A key another
+command has is moved only after you confirm, macOS system shortcuts are refused, and
+changes apply at once. A plain key (a letter, Tab, an arrow) works in the file list only,
+and a letter bound there no longer starts the filter. Every ⌘, ⌃ or F-key you add works
+wherever the command's first key does, text fields included.
+
+The editor saves to `~/Library/Application Support/drevo/keybindings.json`, which you can
+also edit by hand: Help ▸ **Edit keybindings.json** creates it and a
+`keybindings.defaults.json` reference beside it. The editor writes only the commands that
+differ from their defaults and keeps every other entry's value as you wrote it (it
+re-indents the file and sorts the entries). Map command ids to keys:
 
 ```json
 {
@@ -213,10 +226,12 @@ and a `keybindings.defaults.json` reference beside it. Map command ids to keys:
 ```
 
 Keys are written like `cmd+shift+n`, `opt+cmd+backspace`, `f5`, `tab` or `!`. A value is
-one key or a list of keys; `null` or `[]` unbinds a command. Changes apply when you switch
-back to Drevo, and unknown commands, bad keys or clashes are reported. A key that can't be
-read is skipped, and if none of a command's keys can be read (a typo), the command keeps
-the keys it had.
+one key or a list of keys; `null` or `[]` unbinds a command. Hand edits apply when you
+switch back to Drevo, and unknown commands, bad keys or clashes are reported. A key that
+can't be read is skipped, and if none of a command's keys can be read (a typo), the
+command keeps the keys it had. While the file isn't valid JSON, Settings ▸ Keys won't
+change it. Switching General ▸ Return key moves Return between Open and Rename, even
+after you changed their other keys.
 
 ## The command line
 

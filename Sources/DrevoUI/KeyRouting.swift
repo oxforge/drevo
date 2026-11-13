@@ -82,7 +82,31 @@ extension KeyCombo {
     }
 }
 
+extension CommandID {
+    /// The AppKit action a standard Edit command sends (`CommandSpec.isStandardEdit`), so
+    /// text fields handle it as well as the file list.
+    var standardEditAction: Selector? {
+        switch self {
+        case .undo: return #selector(UndoActions.undo(_:))
+        case .redo: return #selector(UndoActions.redo(_:))
+        case .cut: return #selector(NSText.cut(_:))
+        case .copy: return #selector(NSText.copy(_:))
+        case .paste: return #selector(NSText.paste(_:))
+        case .selectAll: return #selector(NSText.selectAll(_:))
+        default: return nil
+        }
+    }
+}
+
 extension KeyMap {
+    /// The command an event bound to a ⌘/⌃/F-key runs; plain keys stay with the file list.
+    func commandForShortcut(_ event: NSEvent) -> CommandID? {
+        for combo in KeyCombo.candidates(for: event) where !combo.isPlainTyping {
+            if let id = command(for: combo) { return id }
+        }
+        return nil
+    }
+
     /// The command an event triggers, trying each way of reading the event.
     func command(for event: NSEvent) -> CommandID? {
         for combo in KeyCombo.candidates(for: event) {
@@ -96,13 +120,19 @@ extension KeyMap {
         keys(for: id).first { $0.menuKeyEquivalent != nil }
     }
 
-    /// Default keymap adjusted for preferences, plus ~/Library/Application Support/drevo/keybindings.json.
-    @MainActor
-    static func load(preferences: Preferences, overridesURL: URL? = KeyMap.userOverridesURL) -> (KeyMap, [String]) {
+    /// The registry defaults adjusted for the Return-key setting.
+    static func defaults(returnRenames: Bool) -> KeyMap {
         var map = KeyMap()
-        if preferences.returnRenames { map.applyReturnRenames() }
+        if returnRenames { map.applyReturnRenames() }
+        return map
+    }
+
+    /// The defaults plus the overrides (keybindings.json's contents, if there is one; a
+    /// blank file has none, as `KeyBindingsFile` reads it).
+    static func load(returnRenames: Bool, overrides: Data?) -> (KeyMap, [String]) {
+        var map = defaults(returnRenames: returnRenames)
         var problems: [String] = []
-        if let url = overridesURL, let data = try? Data(contentsOf: url) {
+        if let data = overrides, (try? KeyBindingsFile(data: data))?.isEmpty != true {
             do {
                 problems = try map.applyOverrides(json: data).map(\.description)
             } catch {

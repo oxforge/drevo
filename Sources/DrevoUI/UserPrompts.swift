@@ -11,6 +11,8 @@ protocol UserPrompts: AnyObject {
     /// Called on the transfer's worker thread; may block until answered.
     nonisolated func resolveConflict(_ conflict: Conflict, in window: NSWindow?) -> ConflictDecision
     func showError(_ message: String, detail: String?, in window: NSWindow?)
+    /// A yes/no question; `button` names the action, the other choice is Cancel.
+    func confirm(_ message: String, detail: String?, button: String, in window: NSWindow?, then: @escaping (Bool) -> Void)
 }
 
 // MARK: - Sheets
@@ -91,6 +93,15 @@ final class SheetPrompts: UserPrompts {
         alert.messageText = message
         alert.informativeText = detail ?? ""
         present(alert, in: window) { _ in }
+    }
+
+    func confirm(_ message: String, detail: String?, button: String, in window: NSWindow?, then: @escaping (Bool) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.informativeText = detail ?? ""
+        alert.addButton(withTitle: button)
+        alert.addButton(withTitle: "Cancel")
+        present(alert, in: window) { then($0 == .alertFirstButtonReturn) }
     }
 
     private func present(_ alert: NSAlert, in window: NSWindow?, then: @escaping (NSApplication.ModalResponse) -> Void) {

@@ -72,61 +72,26 @@ final class GlobalHotkey {
 /// Settings' button for choosing the global shortcut: click, then press the keys.
 /// Esc leaves it as it was.
 @MainActor
-final class HotkeyRecorderButton: NSButton {
+final class HotkeyRecorderButton: KeyRecorderButton {
     /// The shortcut shown while not recording.
-    var setting: HotkeySetting? { didSet { refreshTitle() } }
+    var setting: HotkeySetting? { didSet { restingTitle = setting?.combo.description ?? "Record Shortcut" } }
     /// A shortcut was typed; return why it can't be used, or nil when it was taken.
     var onRecord: ((HotkeySetting) -> String?)?
-    private(set) var isRecording = false { didSet { refreshTitle() } }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        bezelStyle = .rounded
-        target = self
-        action = #selector(toggleRecording(_:))
-        refreshTitle()
+        restingTitle = "Record Shortcut"
+        recordingTitle = "Press a shortcut…"
+        onKeystroke = { [weak self] event in
+            guard let combo = KeyCombo.candidates(for: event).first else {
+                NSSound.beep()
+                return false
+            }
+            // A refused shortcut leaves the button waiting for another one.
+            return self?.onRecord?(HotkeySetting(combo: combo, keyCode: event.keyCode)) == nil
+        }
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
-
-    private func refreshTitle() {
-        title = isRecording ? "Press a shortcut…" : (setting?.combo.description ?? "Record Shortcut")
-    }
-
-    @objc func toggleRecording(_ sender: Any?) {
-        isRecording.toggle()
-        if isRecording { window?.makeFirstResponder(self) }
-    }
-
-    override var acceptsFirstResponder: Bool { true }
-
-    override func resignFirstResponder() -> Bool {
-        isRecording = false
-        return super.resignFirstResponder()
-    }
-
-    /// ⌘ and ⌃ combos arrive as key equivalents before any keyDown.
-    override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        guard isRecording, event.type == .keyDown else { return super.performKeyEquivalent(with: event) }
-        record(event)
-        return true
-    }
-
-    override func keyDown(with event: NSEvent) {
-        guard isRecording else { return super.keyDown(with: event) }
-        record(event)
-    }
-
-    private func record(_ event: NSEvent) {
-        if event.keyCode == UInt16(kVK_Escape), KeyCombo.Modifiers(event.modifierFlags).isEmpty {
-            isRecording = false
-            return
-        }
-        guard let combo = KeyCombo.candidates(for: event).first else { return NSSound.beep() }
-        // A refused shortcut leaves the button waiting for another one.
-        if onRecord?(HotkeySetting(combo: combo, keyCode: event.keyCode)) == nil {
-            isRecording = false
-        }
-    }
 }

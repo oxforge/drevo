@@ -24,7 +24,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
         commandBar = CommandBar(preferences: env.preferences)
         shell = ShellSession(console: workspace.console, preferences: env.preferences, setup: env.shellSetup)
 
-        let window = NSWindow(
+        let window = MainWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1240, height: 760),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false)
@@ -48,6 +48,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
         window.contentViewController = splitController
         window.setContentSize(NSSize(width: 1240, height: 760))
         window.delegate = self
+        window.unclaimedKeyHandler = { [weak self] in self?.handleUnclaimedKey($0) ?? false }
 
         let toolbar = NSToolbar(identifier: "drevo.main")
         toolbar.delegate = self
@@ -314,6 +315,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
             menuItem.state = paneGroup.activePane.sort.key == key ? .on : .off
         default: break
         }
+        return isAvailable(id)
+    }
+
+    /// The menu's rule: `canPerform`, and while a text field edits only Window, View and
+    /// Shell commands.
+    private func isAvailable(_ id: CommandID) -> Bool {
         let category = CommandRegistry.spec(id)?.category
         if isEditingText, category != .window, category != .view, category != .shell {
             return false
@@ -321,12 +328,24 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
         return canPerform(id)
     }
 
+    /// A ⌘/⌃/F-key no menu item claimed: a command's second key, say (a menu item carries
+    /// only the first). It runs under the menu's rules; otherwise the focused view gets it.
+    func handleUnclaimedKey(_ event: NSEvent) -> Bool {
+        guard let id = env.keyMap.commandForShortcut(event) else { return false }
+        if let action = id.standardEditAction {
+            return window?.firstResponder?.tryToPerform(action, with: nil) ?? false
+        }
+        guard isAvailable(id) else { return false }
+        perform(id)
+        return true
+    }
+
     // MARK: Preferences
 
     private func preferencesChanged(key: Preferences.Key?) {
         switch key {
         case .returnRenames:
-            env.reloadKeyMap()
+            break // the environment moves Return and reloads the key map
         case .showSidebar:
             if sidebarItem.isCollapsed == env.preferences.showSidebar { sidebarItem.isCollapsed = !env.preferences.showSidebar }
         case .favorites:

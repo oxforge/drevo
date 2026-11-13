@@ -27,6 +27,9 @@ final class SettingsModel: ObservableObject {
 
     var prefs: Preferences { env.preferences }
 
+    /// Settings ▸ Keys.
+    lazy var shortcuts = ShortcutEditorModel(env: env)
+
     var shellSetupStatus: String {
         _ = tick
         let setup = env.shellSetup
@@ -310,22 +313,7 @@ struct IntegrationTab: View {
 private struct KeysTab: View {
     @ObservedObject var model: SettingsModel
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ScrollView {
-                Text(AttributedString(ShortcutsWindow.text(keyMap: model.env.keyMap)))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
-            }
-            .frame(height: 380)
-            .background(Color(nsColor: .textBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            HStack {
-                Button("Edit keybindings.json") { NSApp.sendAction(#selector(AppDelegate.editKeyBindings(_:)), to: nil, from: nil) }
-                Text("Changes apply when you switch back to Drevo.").font(.caption).foregroundStyle(.secondary)
-            }
-        }
-        .padding(16)
+        ShortcutEditorView(editor: model.shortcuts)
     }
 }
 

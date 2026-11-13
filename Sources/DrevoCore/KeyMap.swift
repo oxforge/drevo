@@ -114,7 +114,7 @@ public struct KeyMap: Equatable, Sendable {
     /// The starter keybindings.json: no overrides, just a pointer to the defaults.
     public static let starterJSON = """
     {
-      "_comment": "Override shortcuts here; keybindings.defaults.json lists every command id with its default keys. A value is one key ('f2'), a list (['f2', 'cmd+r']) or null to unbind. Keys: cmd, shift, opt, ctrl + a letter, symbol, f1-f20, return, tab, space, escape, backspace, up, down, left, right. Changes apply when you switch back to Drevo.",
+      "_comment": "Settings ▸ Keys edits this file for you; you can also override shortcuts here by hand. keybindings.defaults.json lists every command id with its default keys. A value is one key ('f2'), a list (['f2', 'cmd+r']) or null to unbind. Keys: cmd, shift, opt, ctrl + a letter, symbol, f1-f20, return, tab, space, escape, backspace, up, down, left, right. Hand edits apply when you switch back to Drevo.",
       "_example_vim_style": { "nav.levelUp": ["left", "h"], "nav.levelDown": ["right", "l"] }
     }
 
