@@ -636,11 +636,13 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
             beginPathEditing(prefill: c == "~" ? "~/" : "/")
             return true
         }
-        if event.keyCode == 53, !filter.isEmpty { // Esc clears an active filter
+        // A bare Esc; Esc with modifiers is a key the user may have bound.
+        let bareEsc = event.keyCode == 53 && KeyCombo.Modifiers(event.modifierFlags).isEmpty
+        if bareEsc, !filter.isEmpty { // Esc clears an active filter
             clearFilter()
             return true
         }
-        if event.keyCode == 53, searchQuery != nil { // Esc leaves the search results
+        if bareEsc, searchQuery != nil { // Esc leaves the search results
             endSearch()
             return true
         }

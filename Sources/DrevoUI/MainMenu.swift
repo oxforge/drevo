@@ -44,14 +44,9 @@ enum MainMenu {
         closeWindow.keyEquivalentModifierMask = [.command, .shift]
 
         let edit = submenu(main, "Edit")
-        addStandard(edit, .undo, #selector(UndoActions.undo(_:)), keyMap)
-        addStandard(edit, .redo, #selector(UndoActions.redo(_:)), keyMap)
+        add(edit, [.undo, .redo], keyMap)
         edit.addItem(.separator())
-        addStandard(edit, .cut, #selector(NSText.cut(_:)), keyMap)
-        addStandard(edit, .copy, #selector(NSText.copy(_:)), keyMap)
-        addStandard(edit, .paste, #selector(NSText.paste(_:)), keyMap)
-        add(edit, [.pasteMove], keyMap)
-        addStandard(edit, .selectAll, #selector(NSText.selectAll(_:)), keyMap)
+        add(edit, [.cut, .copy, .paste, .pasteMove, .selectAll], keyMap)
         edit.addItem(.separator())
         add(edit, [.filter, .search], keyMap)
 
@@ -133,12 +128,9 @@ enum MainMenu {
         return item
     }
 
+    /// Standard Edit commands send their AppKit action, so text fields get them too.
     private static func add(_ menu: NSMenu, _ ids: [CommandID], _ keyMap: KeyMap) {
-        for id in ids { menu.addItem(item(for: id, keyMap: keyMap)) }
-    }
-
-    private static func addStandard(_ menu: NSMenu, _ id: CommandID, _ action: Selector, _ keyMap: KeyMap) {
-        menu.addItem(item(for: id, keyMap: keyMap, action: action))
+        for id in ids { menu.addItem(item(for: id, keyMap: keyMap, action: id.standardEditAction ?? commandAction)) }
     }
 }
 

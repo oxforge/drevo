@@ -82,7 +82,31 @@ extension KeyCombo {
     }
 }
 
+extension CommandID {
+    /// The AppKit action a standard Edit command sends (`CommandSpec.isStandardEdit`), so
+    /// text fields handle it as well as the file list.
+    var standardEditAction: Selector? {
+        switch self {
+        case .undo: return #selector(UndoActions.undo(_:))
+        case .redo: return #selector(UndoActions.redo(_:))
+        case .cut: return #selector(NSText.cut(_:))
+        case .copy: return #selector(NSText.copy(_:))
+        case .paste: return #selector(NSText.paste(_:))
+        case .selectAll: return #selector(NSText.selectAll(_:))
+        default: return nil
+        }
+    }
+}
+
 extension KeyMap {
+    /// The command an event bound to a ⌘/⌃/F-key runs; plain keys stay with the file list.
+    func commandForShortcut(_ event: NSEvent) -> CommandID? {
+        for combo in KeyCombo.candidates(for: event) where !combo.isPlainTyping {
+            if let id = command(for: combo) { return id }
+        }
+        return nil
+    }
+
     /// The command an event triggers, trying each way of reading the event.
     func command(for event: NSEvent) -> CommandID? {
         for combo in KeyCombo.candidates(for: event) {
