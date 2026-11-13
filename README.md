@@ -9,6 +9,8 @@
 
 # Drevo
 
+<p align="center"><a href="docs/recording.mov"><img src="docs/recording.gif" width="900" alt="Drevo in use: two panes, type-to-filter and the key-hint bar"></a></p>
+
 A native dual-pane file manager for macOS, built to replace Finder for everyday use.
 Miller columns like Finder's Column view, two (up to four) panes like Midnight Commander,
 Finder's shortcuts plus the commander keys (Tab, F5 copy, F6 move, …), a built-in command
