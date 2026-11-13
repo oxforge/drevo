@@ -1,5 +1,12 @@
 <p align="center"><img src="docs/icon.png" width="128" alt="Drevo icon"></p>
 
+<p align="center">
+  <a href="https://github.com/oxforge/drevo/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/oxforge/drevo/ci.yml?branch=main&amp;label=CI" alt="CI status"></a>
+  <a href="https://github.com/oxforge/drevo/releases/latest"><img src="https://img.shields.io/github/v/release/oxforge/drevo?sort=semver" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/oxforge/drevo" alt="MIT license"></a>
+  <a href="#requirements"><img src="https://img.shields.io/badge/macOS-14%2B-blue?logo=apple" alt="macOS 14 or later"></a>
+</p>
+
 # Drevo
 
 A native dual-pane file manager for macOS, built to replace Finder for everyday use.
