@@ -39,6 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 NSApp.mainMenu = MainMenu.build(keyMap: self.env.keyMap)
+                ShortcutsWindow.refresh(keyMap: self.env.keyMap)
             }
         })
 

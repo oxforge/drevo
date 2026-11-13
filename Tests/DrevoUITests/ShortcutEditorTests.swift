@@ -142,6 +142,16 @@ import Testing
         #expect(found == MainMenu.fixedShortcuts)
     }
 
+    @Test func anOpenShortcutsWindowFollowsChanges() {
+        ShortcutsWindow.show(keyMap: KeyMap())
+        defer { ShortcutsWindow.close() }
+        #expect(ShortcutsWindow.shownText?.contains("Rename\tF2   ⌘R") == true)
+        var map = KeyMap()
+        map.set([combo("f9")], for: .rename)
+        ShortcutsWindow.refresh(keyMap: map)
+        #expect(ShortcutsWindow.shownText?.contains("Rename\tF9") == true)
+    }
+
     // MARK: Keycap recorder
 
     @Test func keycapRecordsEveryReadingAndCancelsOnEsc() {
