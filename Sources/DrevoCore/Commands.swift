@@ -118,6 +118,10 @@ public extension CommandID {
     static let runInTerminal = CommandID("shell.runInTerminal")
     // Window
     static let newWindow = CommandID("window.new")
+    static let newTab = CommandID("tab.new")
+    static let closeTab = CommandID("tab.close")
+    static let nextTab = CommandID("tab.next")
+    static let previousTab = CommandID("tab.previous")
 }
 
 /// Every command with its default shortcuts. Order within a category is menu order.
@@ -199,6 +203,12 @@ public enum CommandRegistry {
         CommandSpec(.runInTerminal, "Run Command in Terminal", .shell, help: "From the command line: ⌘↩ runs it in your terminal app"),
         // Window
         CommandSpec(.newWindow, "New Window", .window, keys: ["cmd+n"]),
+        // Tabs belong to a pane; they are window-category commands so they work while a
+        // text field edits.
+        CommandSpec(.newTab, "New Tab", .window, keys: ["cmd+t"], help: "Another tab in this pane, on the same folder"),
+        CommandSpec(.closeTab, "Close Tab", .window, keys: ["cmd+w"], help: "Closes the window when the pane has one tab"),
+        CommandSpec(.nextTab, "Show Next Tab", .window, keys: ["ctrl+tab"]),
+        CommandSpec(.previousTab, "Show Previous Tab", .window, keys: ["ctrl+shift+tab"]),
     ]
 
     public static let byID: [CommandID: CommandSpec] = Dictionary(uniqueKeysWithValues: all.map { ($0.id, $0) })
@@ -219,7 +229,7 @@ public enum SystemShortcuts {
             "cmd+h", "opt+cmd+h", "cmd+m", "cmd+q", "shift+cmd+q", "opt+shift+cmd+q", "ctrl+cmd+q",
             "ctrl+cmd+d", "opt+cmd+d", "opt+cmd+escape", "ctrl+cmd+f", "shift+cmd+/",
             "opt+cmd+8", "opt+cmd+=", "opt+cmd+-", "ctrl+opt+cmd+8",
-            "cmd+w", "cmd+,",
+            "cmd+,", // ⌘W is Close Tab, which closes the window with the last tab
         ]
         s += (1...9).map { "ctrl+\($0)" }
         s += (1...8).map { "ctrl+f\($0)" }

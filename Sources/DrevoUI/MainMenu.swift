@@ -26,7 +26,7 @@ enum MainMenu {
         app.addItem(withTitle: "Quit Drevo", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
         let file = submenu(main, "File")
-        add(file, [.newWindow], keyMap)
+        add(file, [.newWindow, .newTab], keyMap)
         file.addItem(.separator())
         add(file, [.open, .quickLook, .edit, .showPackageContents, .revealInFinder], keyMap)
         file.addItem(.separator())
@@ -38,7 +38,10 @@ enum MainMenu {
         file.addItem(.separator())
         add(file, [.moveToTrash, .deleteImmediately], keyMap)
         file.addItem(.separator())
-        file.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        // ⌘W closes a tab, and the window with the pane's last one; ⇧⌘W always the window.
+        add(file, [.closeTab], keyMap)
+        let closeWindow = file.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        closeWindow.keyEquivalentModifierMask = [.command, .shift]
 
         let edit = submenu(main, "Edit")
         addStandard(edit, .undo, #selector(UndoActions.undo(_:)), keyMap)
@@ -93,6 +96,8 @@ enum MainMenu {
         let window = submenu(main, "Window")
         window.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
         window.addItem(withTitle: "Zoom", action: #selector(NSWindow.performZoom(_:)), keyEquivalent: "")
+        window.addItem(.separator())
+        add(window, [.nextTab, .previousTab], keyMap)
         window.addItem(.separator())
         window.addItem(withTitle: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
         NSApp.windowsMenu = window

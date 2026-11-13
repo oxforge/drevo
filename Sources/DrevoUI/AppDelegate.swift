@@ -57,6 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if options.openPaths.isEmpty, env.preferences.restoreState,
            let saved = WindowState.decode(env.preferences.savedWindowState)?.validated() {
             wc = openWindow(directories: saved.directories, viewModes: saved.viewModes, sorts: saved.sorts)
+            wc.paneGroup.restoreTabs(from: saved)
             wc.paneGroup.activate(index: saved.activeIndex)
         } else {
             wc = openWindow(directories: initialDirectories())
@@ -116,10 +117,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Menu commands with no window open (only New Window works then).
+    /// Menu commands with no browser window in front: New Window, and ⌘W for whatever
+    /// window is (Settings, Keyboard Shortcuts).
     @objc func performCommand(_ sender: Any?) {
-        if (sender as? NSMenuItem)?.representedObject as? String == CommandID.newWindow.rawValue {
-            newWindow(sender)
+        switch (sender as? NSMenuItem)?.representedObject as? String {
+        case CommandID.newWindow.rawValue: newWindow(sender)
+        case CommandID.closeTab.rawValue: NSApp.keyWindow?.performClose(nil)
+        default: break
         }
     }
 

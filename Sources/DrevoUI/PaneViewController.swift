@@ -9,7 +9,8 @@ protocol CommandDispatching: AnyObject {
     func perform(_ id: CommandID) -> Bool
 }
 
-/// One pane: header (path bar), a browser (List or Columns), status bar.
+/// One pane: header (path bar), tabs when there are several, a browser (List or
+/// Columns), status bar.
 @MainActor
 final class PaneViewController: NSViewController, FileBrowserDelegate {
     let env: AppEnvironment
@@ -29,6 +30,13 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
 
     let header = PaneHeaderView()
     let statusBar = StatusBarView()
+    let tabBar = PaneTabBar()
+    private lazy var tabBarHeight = tabBar.heightAnchor.constraint(equalToConstant: 0)
+    /// Every tab as it was when it was last left. The active tab's entry is out of date
+    /// while it is shown (`history`, `viewMode` and `sort` are its live state); `tabs`
+    /// gives them all as they are now.
+    private var storedTabs: [PaneTab]
+    private(set) var activeTabIndex = 0
     let sortButton = SortButton()
     private let browserContainer = NSView()
 
@@ -44,6 +52,7 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
         self.viewMode = viewMode
         self.sort = sort
         self.history = NavigationHistory(start: directory)
+        self.storedTabs = [PaneTab(history: history, viewMode: viewMode, sort: sort)]
         super.init(nibName: nil, bundle: nil)
         // The browser exists before the view loads so the pane can answer questions early;
         // its view is embedded in loadView.
@@ -55,7 +64,7 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
 
     override func loadView() {
         let root = NSView()
-        for v in [header, browserContainer, statusBar] {
+        for v in [header, tabBar, browserContainer, statusBar] {
             v.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(v)
         }
@@ -63,7 +72,11 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
             header.topAnchor.constraint(equalTo: root.topAnchor),
             header.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             header.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            browserContainer.topAnchor.constraint(equalTo: header.bottomAnchor),
+            tabBar.topAnchor.constraint(equalTo: header.bottomAnchor),
+            tabBar.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            tabBar.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            tabBarHeight,
+            browserContainer.topAnchor.constraint(equalTo: tabBar.bottomAnchor),
             browserContainer.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             browserContainer.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             browserContainer.bottomAnchor.constraint(equalTo: statusBar.topAnchor),
@@ -79,6 +92,11 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
             guard let self else { return }
             self.browser(self.browser, drop: urls, onto: destination, kind: kind)
         }
+        tabBar.onSelect = { [weak self] index in
+            self?.activate(focus: true)
+            self?.selectTab(index)
+        }
+        tabBar.onClose = { [weak self] index in self?.closeTab(at: index) }
         header.onClick = { [weak self] in self?.activate(focus: true) }
         header.onPathAreaClick = { [weak self] in self?.beginPathEditing() }
         header.pathBar.onEditRequest = { [weak self] in self?.beginPathEditing() }
@@ -162,6 +180,82 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
         let selected = selectedItems.first?.url
         viewMode = mode
         installBrowser(directory: dir, selecting: selected)
+        onChange?(self)
+    }
+
+    // MARK: Tabs
+
+    /// Every tab of the pane as it is now.
+    var tabs: [PaneTab] {
+        var all = storedTabs
+        all[activeTabIndex] = PaneTab(history: history, viewMode: viewMode, sort: sort, selection: selectedItems.first?.url)
+        return all
+    }
+
+    var tabCount: Int { storedTabs.count }
+
+    /// ⌘T: another tab on the same folder, right of the current one, with its own history.
+    func newTab() {
+        storedTabs = tabs
+        let fresh = PaneTab(history: NavigationHistory(start: currentDirectory), viewMode: viewMode, sort: sort,
+                            selection: selectedItems.first?.url)
+        activeTabIndex += 1
+        storedTabs.insert(fresh, at: activeTabIndex)
+        // The browser already shows this folder in this view: only the history starts over.
+        history = fresh.history
+        tabsChanged()
+    }
+
+    func selectTab(_ index: Int) {
+        guard storedTabs.indices.contains(index), index != activeTabIndex else { return }
+        storedTabs = tabs
+        activeTabIndex = index
+        showActiveTab()
+    }
+
+    /// Closes a tab; false when it is the only one (⌘W then closes the window).
+    @discardableResult
+    func closeTab(at index: Int) -> Bool {
+        guard storedTabs.count > 1, storedTabs.indices.contains(index) else { return false }
+        storedTabs = tabs
+        storedTabs.remove(at: index)
+        if index == activeTabIndex {
+            // The tab to the right takes its place, as in a browser.
+            activeTabIndex = min(index, storedTabs.count - 1)
+            showActiveTab()
+        } else {
+            if index < activeTabIndex { activeTabIndex -= 1 }
+            tabsChanged()
+        }
+        return true
+    }
+
+    /// Replaces the pane's tabs (saved window state).
+    func restoreTabs(_ tabs: [PaneTab], active: Int) {
+        guard !tabs.isEmpty else { return }
+        storedTabs = tabs
+        activeTabIndex = min(max(0, active), tabs.count - 1)
+        showActiveTab()
+    }
+
+    /// Brings the active tab's saved state on screen.
+    private func showActiveTab() {
+        let tab = storedTabs[activeTabIndex]
+        if !filter.isEmpty || header.isFiltering { clearFilter(reload: false) }
+        history = tab.history
+        sort = tab.sort
+        viewMode = tab.viewMode
+        // The folder may have gone while the tab was in the background.
+        var directory = tab.directory
+        while !directory.isDirectoryOnDisk, directory.path != "/" { directory = directory.deletingLastPathComponent() }
+        history.replaceCurrent(with: directory)
+        installBrowser(directory: directory, selecting: tab.selection)
+        sortButton.update(sort)
+        tabsChanged()
+    }
+
+    private func tabsChanged() {
+        refreshChrome()
         onChange?(self)
     }
 
@@ -399,6 +493,10 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
         case .sortByCreated: chooseSort(.created)
         case .sortBySize: chooseSort(.size)
         case .reverseSort: reverseSort()
+        case .newTab: newTab()
+        case .closeTab: if !closeTab(at: activeTabIndex) { view.window?.performClose(nil) }
+        case .nextTab: selectTab((activeTabIndex + 1) % tabCount)
+        case .previousTab: selectTab((activeTabIndex - 1 + tabCount) % tabCount)
         default: return performFileCommand(id)
         }
         return true
@@ -424,6 +522,10 @@ final class PaneViewController: NSViewController, FileBrowserDelegate {
     func refreshChrome() {
         guard isViewLoaded else { return }
         header.pathBar.show(currentDirectory)
+        let all = tabs
+        tabBar.show(titles: all.map { Formatting.displayName($0.directory) }, tooltips: all.map(\.directory.path), active: activeTabIndex)
+        tabBar.isHidden = all.count < 2
+        tabBarHeight.constant = all.count < 2 ? 0 : PaneTabBar.height
         updateStatus()
     }
 

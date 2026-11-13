@@ -212,6 +212,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
 
     @objc func performCommand(_ sender: Any?) {
         guard let raw = (sender as? NSMenuItem)?.representedObject as? String ?? (sender as? NSToolbarItem)?.itemIdentifier.rawValue else { return }
+        // ⌘W with a panel in front (Get Info) closes the panel, not a tab behind it.
+        if CommandID(raw) == .closeTab, let key = NSApp.keyWindow, key !== window {
+            key.performClose(nil)
+            return
+        }
         perform(CommandID(raw))
     }
 
@@ -276,8 +281,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
         case .enclosingFolder, .levelUp, .levelDown, .goHome, .goDesktop, .goDocuments, .goDownloads,
              .goApplications, .goUtilities, .goVolumes, .listView, .columnsView, .toggleHidden,
              .toggleStatusBar, .toggleKeyHints, .toggleCommandLine, .toggleSidebar, .biggerRows,
-             .smallerRows, .newWindow, .addToSidebar:
+             .smallerRows, .newWindow, .addToSidebar, .newTab, .closeTab:
             return true
+        case .nextTab, .previousTab: return pane.tabCount > 1
         default:
             return false
         }
@@ -301,6 +307,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
         case .toggleSidebar: menuItem.state = sidebarItem.isCollapsed ? .off : .on
         case .listView: menuItem.state = paneGroup.activePane.viewMode == .list ? .on : .off
         case .columnsView: menuItem.state = paneGroup.activePane.viewMode == .columns ? .on : .off
+        case .closeTab: menuItem.title = paneGroup.activePane.tabCount > 1 ? "Close Tab" : "Close Window"
         case .sortByName, .sortByKind, .sortByModified, .sortByCreated, .sortBySize:
             let key: SortKey = [CommandID.sortByName: .name, .sortByKind: .kind, .sortByModified: .modified,
                                 .sortByCreated: .created, .sortBySize: .size][id]!
