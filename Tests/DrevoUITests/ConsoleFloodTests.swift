@@ -26,6 +26,30 @@ final class Heartbeat {
     }
 }
 
+/// The longest the main run loop goes without firing a 50 Hz timer while `command` runs
+/// in `wc`'s command line, and the same for a command that prints nothing.
+///
+/// The longest gap also holds work every command causes, whatever it prints: the console
+/// opening (the window lays out again) and, at the end, the panes reloading and everything
+/// redrawing. That is ~0.1 s on a fast Mac, where 50 MB of output costs the console a few
+/// ms, and most likely what the CI runner measured as 1.1–1.4 s gaps against a 1 s limit.
+/// So the console is opened first, and the quiet command is the baseline to compare with.
+@MainActor
+func mainRunLoopGaps(running command: String, in wc: MainWindowController) -> (command: TimeInterval, quiet: TimeInterval) {
+    func longestGap(_ command: String) -> TimeInterval {
+        wc.commandBar.field.stringValue = command
+        wc.commandBar.submit(inTerminal: false)
+        let heartbeat = Heartbeat(every: 0.02)
+        let end = Date().addingTimeInterval(60)
+        while wc.shell.isRunning, Date() < end { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+        #expect(!wc.shell.isRunning, "“\(command)” ended within a minute")
+        return heartbeat.stop()
+    }
+    _ = longestGap("true") // opens the console
+    let quiet = longestGap("true")
+    return (longestGap(command), quiet)
+}
+
 /// The console under commands that print faster than a text view can render (review C1),
 /// and what it shows of their output.
 @MainActor
@@ -64,30 +88,14 @@ final class Heartbeat {
 
     // MARK: Fast output
 
-    /// Runs `command` to its end and returns the longest the main run loop went without
-    /// firing a 50 Hz timer meanwhile.
-    func longestGap(running command: String, in wc: MainWindowController) -> TimeInterval {
-        run(command, in: wc)
-        let heartbeat = Heartbeat(every: 0.02)
-        #expect(waitFor(60) { !wc.shell.isRunning })
-        return heartbeat.stop()
-    }
-
     // Before the fix this command held the main thread for 8 s without a timer firing once.
     // Now it is over in a fraction of a second (a couple of console updates), so there is
-    // no rate to measure here; the endless command below measures one.
-    // The longest gap also holds work every command causes, whatever it prints: the
-    // console opening (the window lays out again) and, at the end, the panes reloading and
-    // everything redrawing. That is ~0.1 s on a fast Mac (the output itself costs a few
-    // ms), and most likely what the CI runner measured as a 1.4 s gap; so the console is
-    // opened first and a command that prints nothing gives the baseline. Other suites share the main thread through nested run loops, hence the
-    // slack in the limits.
+    // no rate to measure here; the endless command below measures one. Other suites share
+    // the main thread through nested run loops, hence the slack in the limits.
     @Test func fastOutputLeavesTheMainRunLoopResponsive() {
         let wc = window()
-        _ = longestGap(running: "true", in: wc) // opens the console
-        let quiet = longestGap(running: "true", in: wc)
-        let flood = longestGap(running: "yes '\(line)' | head -c 50000000", in: wc)
-        #expect(flood < quiet + 1, "the output adds no long hold of the main run loop (longest gap \(flood) s, \(quiet) s for a command without output)")
+        let gaps = mainRunLoopGaps(running: "yes '\(line)' | head -c 50000000", in: wc)
+        #expect(gaps.command < gaps.quiet + 1, "the output adds no long hold of the main run loop (longest gap \(gaps.command) s, \(gaps.quiet) s for a command without output)")
 
         let transcript = wc.workspace.console.transcript
         let length = (transcript as NSString).length
@@ -103,6 +111,7 @@ final class Heartbeat {
 
     @Test func stopWorksDuringEndlessOutput() {
         let wc = window()
+        let quiet = mainRunLoopGaps(running: "true", in: wc).quiet // and opens the console
         run("yes '\(line)'", in: wc)
         #expect(waitFor { wc.shell.isRunning })
         let heartbeat = Heartbeat()
@@ -116,7 +125,8 @@ final class Heartbeat {
         wc.perform(.stopCommand)
         #expect(waitFor(5) { !wc.shell.isRunning })
         #expect(Date().timeIntervalSince(start) < 3, "Stop takes effect at once, with no backlog to work off")
-        #expect(heartbeat.stop() < 1)
+        let longestGap = heartbeat.stop()
+        #expect(longestGap < quiet + 1, "the flood and its end add no long hold of the main run loop (longest gap \(longestGap) s, \(quiet) s for a command without output)")
         let transcript = wc.workspace.console.transcript
         #expect((transcript as NSString).length <= ConsoleViewController.maxCharacters)
         #expect(transcript.hasSuffix(" s\n") && transcript.contains("stopped (signal 2) · "), "the status line ends the transcript")

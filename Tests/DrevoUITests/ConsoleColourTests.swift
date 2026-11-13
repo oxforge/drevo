@@ -234,11 +234,8 @@ import Testing
     /// skipped depends on how fast the reader parses, so that is not checked.)
     @Test func aColouredFloodLeavesTheMainRunLoopResponsive() {
         let wc = window()
-        run(#"yes $'\e[1;32mthe quick\e[0m brown fox' | head -c 50000000"#, in: wc)
-        let heartbeat = Heartbeat(every: 0.02)
-        #expect(waitFor(60) { !wc.shell.isRunning })
-        let longestGap = heartbeat.stop()
-        #expect(longestGap < 1, "the main run loop was never held for long (longest gap \(longestGap) s)")
+        let gaps = mainRunLoopGaps(running: #"yes $'\e[1;32mthe quick\e[0m brown fox' | head -c 50000000"#, in: wc)
+        #expect(gaps.command < gaps.quiet + 1, "the output adds no long hold of the main run loop (longest gap \(gaps.command) s, \(gaps.quiet) s for a command without output)")
 
         let text = wc.workspace.console.attributedTranscript
         #expect(text.length <= ConsoleViewController.maxCharacters, "the transcript stays within its cap")
