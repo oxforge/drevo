@@ -8,6 +8,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var windowControllers: [MainWindowController] = []
     private var observers: [NSObjectProtocol] = []
 
+    /// The system-wide shortcut from Settings ▸ General.
+    let hotkey = GlobalHotkey()
+
     init(options: LaunchOptions) {
         self.options = options
     }
@@ -37,6 +40,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 NSApp.mainMenu = MainMenu.build(keyMap: self.env.keyMap)
+            }
+        })
+
+        hotkey.onPress = { [weak self] in self?.showFromHotkey() }
+        hotkey.register(env.preferences.globalHotkey)
+        observers.append(NotificationCenter.default.addObserver(forName: Preferences.didChange, object: env.preferences, queue: .main) { [weak self] note in
+            guard note.userInfo?[Preferences.changedKey] as? Preferences.Key == .globalHotkey else { return }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.hotkey.register(self.env.preferences.globalHotkey)
             }
         })
 
@@ -135,6 +148,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pane.focus()
         NSApp.activate()
     }
+
+    /// The global hotkey was pressed: Drevo comes to the front with a window to work in.
+    func showFromHotkey() {
+        activateApp()
+        guard let wc = frontWindowController else {
+            newWindow(nil)
+            return
+        }
+        if wc.window?.isMiniaturized == true { wc.window?.deminiaturize(nil) }
+        wc.window?.makeKeyAndOrderFront(nil)
+        wc.paneGroup.activePane.focus()
+    }
+
+    /// Tests leave the test runner's app where it is.
+    var activateApp: () -> Void = { NSApp.activate(ignoringOtherApps: true) }
 
     private var frontWindowController: MainWindowController? {
         if let key = NSApp.keyWindow?.windowController as? MainWindowController { return key }

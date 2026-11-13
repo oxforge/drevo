@@ -44,6 +44,32 @@ final class SettingsModel: ObservableObject {
                 set: { [unowned self] in self.prefs[keyPath: keyPath] = $0 })
     }
 
+    // MARK: Global shortcut
+
+    /// Why the last shortcut typed in Settings wasn't taken.
+    @Published var hotkeyProblem: String?
+
+    /// Takes `setting` as the global shortcut (nil = none) unless a rule or another app
+    /// is against it; returns the reason then.
+    @discardableResult
+    func setGlobalHotkey(_ setting: HotkeySetting?) -> String? {
+        hotkeyProblem = nil
+        if let setting {
+            let keyMap = env.keyMap
+            hotkeyProblem = GlobalHotkeyRule.problem(with: setting.combo) { combo in
+                keyMap.command(for: combo).flatMap { CommandRegistry.spec($0)?.title }
+            }
+            if hotkeyProblem != nil { return hotkeyProblem }
+        }
+        let previous = prefs.globalHotkey
+        prefs.globalHotkey = setting // the app delegate registers it
+        if let setting, let hotkey = (NSApp?.delegate as? AppDelegate)?.hotkey, hotkey.isRefused {
+            prefs.globalHotkey = previous
+            hotkeyProblem = "\(setting.combo) is taken by another app."
+        }
+        return hotkeyProblem
+    }
+
     // MARK: Integration
 
     func refreshIntegration() {
@@ -129,8 +155,38 @@ private struct GeneralTab: View {
             }
             Stepper("Panes in new windows: \(model.prefs.paneCount)", value: model.binding(\.paneCount), in: 1...4)
             Toggle("Reopen the same folders at launch", isOn: model.binding(\.restoreState))
+            Section {
+                LabeledContent("Show Drevo from any app") {
+                    HStack {
+                        HotkeyRecorder(model: model).fixedSize()
+                        Button("Clear") { model.setGlobalHotkey(nil) }
+                            .disabled(model.prefs.globalHotkey == nil)
+                    }
+                }
+                if let problem = model.hotkeyProblem {
+                    Text(problem).font(.caption).foregroundStyle(.orange)
+                } else {
+                    Text("A shortcut that works in every app: it brings Drevo to the front, opening a window if there is none. Off until you record one.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            } header: { Text("Global shortcut") }
         }
         .formStyle(.grouped)
+    }
+}
+
+/// The record-a-shortcut button, for SwiftUI.
+private struct HotkeyRecorder: NSViewRepresentable {
+    @ObservedObject var model: SettingsModel
+
+    func makeNSView(context: Context) -> HotkeyRecorderButton {
+        let button = HotkeyRecorderButton(frame: .zero)
+        button.onRecord = { [model] in model.setGlobalHotkey($0) }
+        return button
+    }
+
+    func updateNSView(_ button: HotkeyRecorderButton, context: Context) {
+        if button.setting != model.prefs.globalHotkey { button.setting = model.prefs.globalHotkey }
     }
 }
 

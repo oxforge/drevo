@@ -38,7 +38,7 @@ final class Preferences {
         case showHidden, foldersFirst, returnRenames, confirmTransfers, showKeyHints, showStatusBar
         case showCommandLine, showSidebar, showAllExtensions, relativeDates, restoreState, interactiveShell
         case rowSize, defaultViewMode, paneCount, terminalAppPath, editorAppPath
-        case windowState, commandHistory, favorites, columnWidth
+        case windowState, commandHistory, favorites, columnWidth, globalHotkey
     }
 
     nonisolated static let didChange = Notification.Name("drevo.preferencesDidChange")
@@ -116,6 +116,12 @@ final class Preferences {
     }
 
     static let columnWidthRange: ClosedRange<CGFloat> = 120...800
+
+    /// The system-wide shortcut that shows Drevo; nil = none (the default).
+    var globalHotkey: HotkeySetting? {
+        get { (value(.globalHotkey) as? Data).flatMap { try? JSONDecoder().decode(HotkeySetting.self, from: $0) } }
+        set { set(newValue.flatMap { try? JSONEncoder().encode($0) }, .globalHotkey) }
+    }
 
     var favoritePaths: [String]? {
         get { value(.favorites) as? [String] }

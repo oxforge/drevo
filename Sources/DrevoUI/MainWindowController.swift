@@ -329,6 +329,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, CommandD
         case .showCommandLine:
             commandBar.isHidden = !env.preferences.showCommandLine
             if commandBar.isHidden, commandBar.hasFocus { paneGroup.activePane.focus() }
+        case .globalHotkey:
+            break // the app delegate registers it
         default:
             // Everything else changes what the panes show.
             paneGroup.panes.forEach { $0.applyPreferences() }
