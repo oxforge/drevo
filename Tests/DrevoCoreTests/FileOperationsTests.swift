@@ -107,12 +107,6 @@ import Testing
         #expect(made.map(\.lastPathComponent) == ["a.txt alias", "a.txt alias 2"])
     }
 
-    @Test func deleteImmediately() throws {
-        let a = tmp.file("a.txt")
-        try ops.deleteImmediately([a])
-        #expect(!exists("a.txt"))
-    }
-
     @Test func insideCheck() {
         let a = URL(fileURLWithPath: "/x/y")
         #expect(URL(fileURLWithPath: "/x/y/z").isInside(a))

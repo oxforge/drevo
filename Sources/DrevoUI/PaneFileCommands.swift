@@ -119,11 +119,13 @@ extension PaneViewController {
         operations.prompts.confirmDelete(items.map(\.url), in: view.window) { [weak self] ok in
             guard let self, ok else { return }
             let next = self.indexAfterRemoving(items)
-            let done: Bool? = self.operations.perform("Delete", in: self.view.window) {
-                try self.operations.ops.deleteImmediately(items.map(\.url))
-                return (true, nil)
+            let folder = self.currentDirectory
+            self.operations.delete(items.map(\.url), window: self.view.window) { [weak self] result in
+                // Only when everything went, and the pane still shows that folder: a long
+                // delete can end after the user has moved on.
+                guard let self, !result.cancelled, result.errors.isEmpty, self.currentDirectory == folder else { return }
+                self.selectNearby(next)
             }
-            if done == true { self.selectNearby(next) }
         }
     }
 
@@ -142,8 +144,8 @@ extension PaneViewController {
 
     func duplicateSelection() {
         let urls = selectedItems.map(\.url)
-        if let made: [URL] = operations.perform("Duplicate", in: view.window, { try self.operations.ops.duplicate(urls) }) {
-            reload(selecting: made)
+        operations.duplicate(urls, window: view.window) { [weak self] result in
+            self?.reload(selecting: result.outputs)
         }
     }
 

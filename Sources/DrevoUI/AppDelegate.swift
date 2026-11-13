@@ -241,7 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     /// Quitting mid-copy would leave half-copied items under their final names: ask, then
-    /// stop the jobs (transfers, archive expansions) and wait for their cleanup before quitting. Running shell
+    /// stop the jobs (transfers, deletes, undo, archive expansions) and wait for their cleanup before quitting. Running shell
     /// commands are ended once quitting is certain, so they don't outlive the app; "Keep
     /// Running" leaves them alone.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

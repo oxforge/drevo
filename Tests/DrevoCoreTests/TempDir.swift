@@ -1,4 +1,5 @@
 import Foundation
+@testable import DrevoCore
 
 /// A scratch folder deleted when the value goes away.
 final class TempDir {
@@ -28,5 +29,20 @@ final class TempDir {
         let u = url.appendingPathComponent(path, isDirectory: true)
         try! FileManager.default.createDirectory(at: u, withIntermediateDirectories: true)
         return u
+    }
+}
+
+struct DuplicateFailed: Error {
+    let reason: String
+}
+
+extension FileOperations {
+    /// Duplicate as the app does it: a copy of the items into their own folder.
+    func duplicate(_ urls: [URL]) throws -> ([URL], UndoRecord) {
+        let t = Transfer(kind: .copy, sources: urls, destination: urls[0].deletingLastPathComponent())
+        t.trash = trash
+        let r = t.run()
+        if let reason = r.errors.first { throw DuplicateFailed(reason: reason) }
+        return (r.outputs, r.undo ?? .created([]))
     }
 }

@@ -1,8 +1,8 @@
 import AppKit
 import DrevoCore
 
-/// Bottom bar listing running copies/moves with progress and Stop. Hidden when idle;
-/// appears only for transfers that take longer than a moment.
+/// Bottom bar listing the running jobs (copies, moves, deletes, undo…) with progress and
+/// Stop. Hidden when idle; appears only for jobs that take longer than a moment.
 @MainActor
 final class OperationsBar: NSView {
     private let operations: OperationsCenter

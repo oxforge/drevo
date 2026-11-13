@@ -16,7 +16,9 @@ public enum FileOperationError: LocalizedError, Equatable {
     }
 }
 
-/// Single-step file operations (fast, synchronous). Copy/move with progress live in `Transfer`.
+/// Single-step file operations (fast, synchronous). The ones that can take long run in
+/// the background with progress: copy, move and duplicate in `Transfer`, permanent delete
+/// in `Deletion`, undo and redo in `Reversal`.
 public struct FileOperations: Sendable {
     public let trash: Trashing
 
@@ -71,7 +73,7 @@ public struct FileOperations: Sendable {
         return (dest, .renamed(from: url, to: dest))
     }
 
-    // MARK: Trash / delete
+    // MARK: Trash
 
     public func moveToTrash(_ urls: [URL]) throws -> UndoRecord {
         var done: [TrashedItem] = []
@@ -86,33 +88,7 @@ public struct FileOperations: Sendable {
         return .trashed(done)
     }
 
-    /// Permanent; there is no undo.
-    public func deleteImmediately(_ urls: [URL]) throws {
-        for url in urls { try fm.removeItem(at: url) }
-    }
-
-    // MARK: Duplicate / alias
-
-    /// "x copy", "x copy 2" next to each item (APFS clones when possible).
-    public func duplicate(_ urls: [URL]) throws -> ([URL], UndoRecord) {
-        var made: [URL] = []
-        let names = UniqueName.TakenNames()
-        for url in urls {
-            let dir = url.deletingLastPathComponent()
-            let name = UniqueName.copyName(for: url.lastPathComponent, isFolder: UniqueName.isPlainFolder(url), taken: names.taken(in: dir))
-            names.add(name, in: dir)
-            let dest = dir.appendingPathComponent(name)
-            do {
-                try CopyEngine.copy(url, to: dest, allowClone: true, progress: nil)
-            } catch {
-                try? fm.removeItem(at: dest) // no half-made "x copy"
-                if !made.isEmpty { throw PartialFailure(error: error, undo: .created(made)) }
-                throw error
-            }
-            made.append(dest)
-        }
-        return (made, .created(made))
-    }
+    // MARK: Alias
 
     /// Finder aliases ("x alias") next to each item.
     public func makeAlias(_ urls: [URL]) throws -> ([URL], UndoRecord) {
@@ -138,57 +114,10 @@ public struct FileOperations: Sendable {
 
     // MARK: Undo
 
-    /// Reverses `record`; returns the record that redoes it. If it fails partway, throws
-    /// `PartialFailure` whose `undo` redoes the part that was reversed.
+    /// Reverses `record` at once, on the calling thread; returns the record that redoes
+    /// it. If it fails partway, throws `PartialFailure` whose `undo` redoes the part that
+    /// was reversed. The app runs a `Reversal` in the background instead.
     public func undo(_ record: UndoRecord) throws -> UndoRecord {
-        switch record {
-        case .created(let urls):
-            return try moveToTrash(urls.filter { FileIdentity.exists($0) })
-        case .trashed(let items):
-            var restored: [URL] = []
-            do {
-                for item in items {
-                    let dir = item.original.deletingLastPathComponent()
-                    try fm.createDirectory(at: dir, withIntermediateDirectories: true)
-                    var dest = item.original
-                    if FileIdentity.exists(dest) {
-                        dest = dir.appendingPathComponent(UniqueName.numberedName(
-                            for: dest.lastPathComponent, isFolder: UniqueName.isPlainFolder(item.inTrash), taken: UniqueName.takenIn(dir)))
-                    }
-                    try fm.moveItem(at: item.inTrash, to: dest)
-                    restored.append(dest)
-                }
-            } catch {
-                if !restored.isEmpty { throw PartialFailure(error: error, undo: .created(restored)) }
-                throw error
-            }
-            return .created(restored)
-        case .moved(let items):
-            var back: [MovedItem] = []
-            do {
-                for item in items.reversed() {
-                    try fm.moveItem(at: item.to, to: item.from)
-                    back.append(MovedItem(from: item.to, to: item.from))
-                }
-            } catch {
-                if !back.isEmpty { throw PartialFailure(error: error, undo: .moved(back.reversed())) }
-                throw error
-            }
-            return .moved(back.reversed())
-        case .renamed(let from, let to):
-            try fm.moveItem(at: to, to: from)
-            return .renamed(from: to, to: from)
-        case .group(let records):
-            var redo: [UndoRecord] = []
-            do {
-                for r in records.reversed() { redo.append(try undo(r)) }
-            } catch let partial as PartialFailure {
-                throw PartialFailure(error: partial.error, undo: .group(redo + [partial.undo]))
-            } catch {
-                if !redo.isEmpty { throw PartialFailure(error: error, undo: .group(redo)) }
-                throw error
-            }
-            return .group(redo)
-        }
+        try Reversal(record, trash: trash).reverse()
     }
 }

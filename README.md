@@ -27,8 +27,8 @@ line that runs in the current folder, and a Settings window for the rest.
   itself the way Finder does (one item lands beside the archive, several go into a folder
   named after it), without Archive Utility popping up a Finder window. Select several and
   press Return or double-click to expand them all; ⌘Z removes the result.
-- **Safe file operations.** Copies and moves run in the background with a progress bar
-  and Stop. Name clashes ask Replace / Keep Both / Skip / Stop, and Replace moves the old
+- **Safe file operations.** Copies, moves, duplicates, permanent deletes, and undo and
+  redo run in the background with a progress bar and Stop. Name clashes ask Replace / Keep Both / Skip / Stop, and Replace moves the old
   item to the Trash. ⌘Z undoes copy, move, rename, trash, new folder and duplicate.
 - **Shell built in.** ⌥⌘T opens your terminal app in the current folder. Press `!` to type
   a command into the command line under the panes. It runs in the active pane's folder
