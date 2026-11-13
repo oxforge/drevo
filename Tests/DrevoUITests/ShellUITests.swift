@@ -90,6 +90,21 @@ import Testing
         #expect(wc.paneGroup.activePane.browser.hasFocus)
     }
 
+    @Test func tabCompletesTheFileNameAndKeepsFocus() throws {
+        let wc = window()
+        wc.commandBar.focus()
+        let editor = try #require(wc.window!.firstResponder as? NSTextView)
+        editor.string = "cat it"
+        editor.selectedRange = NSRange(location: 6, length: 0)
+        let handled = wc.commandBar.control(wc.commandBar.field, textView: editor, doCommandBy: #selector(NSResponder.insertTab(_:)))
+        #expect(handled, "Tab must not move the focus to the next control")
+        #expect(wc.commandBar.field.stringValue == "cat it\\'s\\ here.txt ")
+        #expect(editor.selectedRange == NSRange(location: 20, length: 0))
+        #expect(wc.commandBar.hasFocus)
+        #expect(wc.commandBar.control(wc.commandBar.field, textView: editor, doCommandBy: #selector(NSResponder.insertBacktab(_:))),
+                "Shift-Tab stays in the command line as well")
+    }
+
     @Test func openTerminalUsesSelectedFolder() {
         let wc = window()
         wc.paneGroup.activePane.browser.select([fx.url.appendingPathComponent("Sub")])

@@ -13,6 +13,10 @@ protocol UserPrompts: AnyObject {
     func showError(_ message: String, detail: String?, in window: NSWindow?)
     /// A yes/no question; `button` names the action, the other choice is Cancel.
     func confirm(_ message: String, detail: String?, button: String, in window: NSWindow?, then: @escaping (Bool) -> Void)
+    /// Good or neutral news that needs no answer.
+    func showInfo(_ message: String, detail: String?, in window: NSWindow?)
+    /// "A new version is available": true = install it and relaunch, false = later.
+    func offerUpdate(version: String, current: String, notes: String, in window: NSWindow?, then: @escaping (Bool) -> Void)
 }
 
 // MARK: - Sheets
@@ -101,6 +105,33 @@ final class SheetPrompts: UserPrompts {
         alert.informativeText = detail ?? ""
         alert.addButton(withTitle: button)
         alert.addButton(withTitle: "Cancel")
+        present(alert, in: window) { then($0 == .alertFirstButtonReturn) }
+    }
+
+    func showInfo(_ message: String, detail: String?, in window: NSWindow?) {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.informativeText = detail ?? ""
+        present(alert, in: window) { _ in }
+    }
+
+    func offerUpdate(version: String, current: String, notes: String, in window: NSWindow?, then: @escaping (Bool) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = "Drevo \(version) is available."
+        alert.informativeText = "You have \(current). Installing closes Drevo and opens the new version."
+        if !notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let scroll = NSTextView.scrollableTextView()
+            scroll.frame = NSRect(x: 0, y: 0, width: 460, height: 220)
+            scroll.borderType = .bezelBorder
+            if let text = scroll.documentView as? NSTextView {
+                text.isEditable = false
+                text.textContainerInset = NSSize(width: 6, height: 6)
+                text.textStorage?.setAttributedString(ReleaseNotes.text(notes))
+            }
+            alert.accessoryView = scroll
+        }
+        alert.addButton(withTitle: "Install and Relaunch")
+        alert.addButton(withTitle: "Later")
         present(alert, in: window) { then($0 == .alertFirstButtonReturn) }
     }
 

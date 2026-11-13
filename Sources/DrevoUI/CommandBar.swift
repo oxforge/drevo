@@ -3,7 +3,7 @@ import DrevoCore
 
 /// The mc-style command line under the panes: runs in the active pane's folder.
 /// Return runs here, ⌘Return in the terminal app, ⌥Return inserts selected names,
-/// ↑/↓ walk history, Esc goes back to the pane.
+/// ↑/↓ walk history, Tab completes a file name, Esc goes back to the pane.
 @MainActor
 final class CommandBar: NSView, NSTextFieldDelegate {
     let field = FocusReportingTextField()
@@ -19,6 +19,7 @@ final class CommandBar: NSView, NSTextFieldDelegate {
     private let preferences: Preferences
     private var historyIndex: Int?
     private var draft = ""
+    private var directory = URL(fileURLWithPath: NSHomeDirectory())
 
     init(preferences: Preferences) {
         self.preferences = preferences
@@ -68,6 +69,7 @@ final class CommandBar: NSView, NSTextFieldDelegate {
     required init?(coder: NSCoder) { fatalError() }
 
     func setDirectory(_ url: URL) {
+        directory = url
         prompt.stringValue = Formatting.abbreviatedPath(url) + " ❯"
         prompt.toolTip = url.path
     }
@@ -103,6 +105,12 @@ final class CommandBar: NSView, NSTextFieldDelegate {
         case #selector(NSResponder.cancelOperation(_:)):
             onEscape?()
             return true
+        case #selector(NSResponder.insertTab(_:)):
+            complete(textView)
+            return true
+        case #selector(NSResponder.insertBacktab(_:)):
+            // Unhandled, Tab and Shift-Tab would move the focus out of the command line.
+            return true
         default:
             return false
         }
@@ -134,6 +142,31 @@ final class CommandBar: NSView, NSTextFieldDelegate {
         }
     }
 
+    /// Tab: complete the file name before the cursor; with several equal matches, offer them in a menu.
+    private func complete(_ editor: NSTextView) {
+        let result = CommandCompletion.complete(line: editor.string, cursor: editor.selectedRange().location,
+                                                relativeTo: directory)
+        if let replacement = result.replacement {
+            editor.insertText(replacement, replacementRange: result.range)
+        } else if result.choices.count > 1 {
+            let menu = NSMenu()
+            for choice in result.choices.prefix(40) {
+                let item = menu.addItem(withTitle: choice.title, action: #selector(completionChosen(_:)), keyEquivalent: "")
+                item.representedObject = CompletionPick(range: result.range, text: choice.replacement)
+                item.target = self
+            }
+            menu.popUp(positioning: nil, at: NSPoint(x: field.frame.minX, y: field.frame.maxY + 2), in: self)
+        } else {
+            NSSound.beep()
+        }
+    }
+
+    @objc private func completionChosen(_ sender: NSMenuItem) {
+        guard let pick = sender.representedObject as? CompletionPick else { return }
+        window?.makeFirstResponder(field)
+        (field.currentEditor() as? NSTextView)?.insertText(pick.text, replacementRange: pick.range)
+    }
+
     private func stepHistory(_ delta: Int) {
         let history = preferences.commandHistory
         guard !history.isEmpty else { return }
@@ -162,6 +195,13 @@ final class CommandBar: NSView, NSTextFieldDelegate {
     }
 
     @objc private func consoleClicked() { onToggleConsole?() }
+}
+
+/// A completion picked from the menu: the text and the word it replaces.
+private final class CompletionPick {
+    let range: NSRange
+    let text: String
+    init(range: NSRange, text: String) { self.range = range; self.text = text }
 }
 
 /// A text field that says when it receives keyboard focus.

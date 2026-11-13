@@ -127,6 +127,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Drevo ▸ Check for Updates…
+    private var updater: Updater?
+
+    @objc func checkForUpdates(_ sender: Any?) {
+        if updater == nil { updater = Updater(prompts: env.operations.prompts) }
+        updater?.check()
+    }
+
+    /// Quitting is certain here: a downloaded update takes the app's place and starts.
+    func applicationWillTerminate(_ notification: Notification) {
+        updater?.finishOnQuit()
+    }
+
     @objc func showSettings(_ sender: Any?) {
         SettingsWindowController.show(env: env)
     }

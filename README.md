@@ -98,6 +98,13 @@ certificate, not an Apple Developer ID, so macOS refuses to open it the first ti
 could not verify…"). Click Done, then System Settings ▸ Privacy & Security ▸ **Open
 Anyway**. macOS remembers the choice. Releases run on Apple Silicon Macs only.
 
+**Updates.** Drevo ▸ **Check for Updates…** asks GitHub for the latest release. Drevo
+checks only when you choose the command. A newer version is shown with its release notes;
+**Install and Relaunch** downloads its disk image, checks that the app in it is signed
+with the same certificate as the one running, replaces the app and opens the new one.
+A copy built with `make app` and no signing identity is signed ad hoc and has no
+certificate to compare with, so there Drevo offers the release page instead.
+
 **Privacy prompts.** macOS asks once per protected folder (Desktop, Documents, Downloads,
 removable volumes). For a file manager it's simpler to grant **Full Disk Access** in System
 Settings ▸ Privacy & Security ▸ Full Disk Access. `make app` signs ad hoc, so macOS can
@@ -261,6 +268,10 @@ The bar under the panes runs commands in the active pane's folder:
 - **⌘Return** runs it in your terminal app instead, for interactive tools like vim, top
   or ssh, and leaves a shell open there.
 - **⌥Return** inserts the selected names, shell-quoted (⇧⌥Return inserts full paths).
+- **Tab** completes the file or folder name before the cursor, from the active pane's
+  folder (or the path typed so far, `~/` included). Several matches extend to their
+  common part; when nothing more can be added, a menu lists them. Spaces and other shell
+  characters in a name are escaped. It completes file names, not command names.
 - **↑ / ↓** walk the history. **Esc** returns to the pane.
 
 Commands get stdin from `/dev/null` and `TERM=dumb`. Not reused from your config:

@@ -18,6 +18,7 @@ enum MainMenu {
 
         let app = submenu(main, "Drevo")
         app.addItem(withTitle: "About Drevo", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        app.addItem(withTitle: "Check for Updates…", action: #selector(AppDelegate.checkForUpdates(_:)), keyEquivalent: "")
         app.addItem(.separator())
         app.addItem(withTitle: "Settings…", action: #selector(AppDelegate.showSettings(_:)), keyEquivalent: ",")
         app.addItem(.separator())

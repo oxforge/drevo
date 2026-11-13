@@ -71,6 +71,14 @@ final class ScriptedPrompts: UserPrompts {
         confirmations.append(message)
         then(confirmAnswer)
     }
+    var infos: [String] = []
+    func showInfo(_ message: String, detail: String?, in window: NSWindow?) { infos.append(message + " " + (detail ?? "")) }
+    var installAnswer = true
+    var offeredUpdates: [String] = []
+    func offerUpdate(version: String, current: String, notes: String, in window: NSWindow?, then: @escaping (Bool) -> Void) {
+        offeredUpdates.append(version)
+        then(installAnswer)
+    }
 }
 
 /// The environment a scratch zsh starts from: the few variables it needs, not a copy of
